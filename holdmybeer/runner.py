@@ -21,13 +21,17 @@ def execute(base_url: str, artifacts: Path, run_id: str, caption: str, filename:
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, timeout=8000)
+            goal = "Open browser page"
             try:
                 page = browser.new_page()
                 page.set_default_timeout(2200)
+                goal = "Open local fixture"
                 page.goto(f"{base_url}/fixture?variant={variant}", wait_until="domcontentloaded", timeout=5000)
                 steps.append({"goal": "Open local fixture", "status": "passed", "evidence": "Fixture page loaded in bundled Chromium"})
+                goal = "Upload selected file"
                 page.get_by_label("Media").set_input_files({"name": filename, "mimeType": "text/plain", "buffer": upload_path.read_bytes()})
                 steps.append({"goal": "Upload selected file", "status": "passed", "evidence": f"File input received {filename}"})
+                goal = "Fill caption"
                 page.get_by_label("Caption").fill(caption)
                 steps.append({"goal": "Fill caption", "status": "passed", "evidence": "Caption field contains requested text"})
                 if variant == "normal":
@@ -37,7 +41,9 @@ def execute(base_url: str, artifacts: Path, run_id: str, caption: str, filename:
                     button = page.get_by_role("button", name="Store draft")
                 else:
                     button = page.get_by_role("button", name="Save draft")
+                goal = "Find save control"
                 button.click(timeout=1600)
+                goal = "Confirm saved draft"
                 page.wait_for_function(
                     "() => { try { return Boolean(JSON.parse(document.querySelector('output').textContent).id) } catch { return false } }",
                     timeout=2500,
@@ -46,6 +52,7 @@ def execute(base_url: str, artifacts: Path, run_id: str, caption: str, filename:
                 if payload.get("filename") != filename or payload.get("caption") != caption or not payload.get("id"):
                     raise RuntimeError("fixture returned a draft with mismatched fields")
                 steps.append({"goal": "Save draft", "status": "passed", "evidence": f"Draft created: {payload['id']}"})
+                goal = "Verify retained draft"
                 response = page.request.get(f"{base_url}/api/fixture/drafts", timeout=2500)
                 drafts = response.json().get("drafts", [])
                 retained = next((d for d in drafts if d.get("id") == payload["id"]), None)
@@ -53,12 +60,13 @@ def execute(base_url: str, artifacts: Path, run_id: str, caption: str, filename:
                     raise RuntimeError("saved draft was not present in retained draft list")
                 steps.append({"goal": "Verify retained draft", "status": "passed", "evidence": f"Draft {payload['id']} appears in API list"})
                 result.update(status="verified", draft_id=payload["id"])
-            except PlaywrightTimeout as exc:
-                if variant == "changed" and not repair:
-                    result.update(status="needs_teaching", failure="Save button label changed; review the new locator before continuing")
-                    steps.append({"goal": "Find save control", "status": "needs_teaching", "evidence": "Expected accessible button name was not found"})
+            except PlaywrightTimeout:
+                if variant == "changed" and not repair and goal == "Find save control":
+                    result.update(status="needs_teaching", failure="The Save draft control did not become clickable. Review the screenshot, if available: which control should save the draft?")
+                    steps.append({"goal": goal, "status": "needs_teaching", "evidence": "Clicking the Save draft control timed out; the cause has not been confirmed"})
                 else:
-                    result["failure"] = f"Browser interaction timed out: {str(exc)[:250]}"
+                    result["failure"] = f"{goal} timed out. Review the screenshot, if available, and retry this step."
+                    steps.append({"goal": goal, "status": "failed", "evidence": "Browser interaction timed out; the cause has not been confirmed"})
             except Exception as exc:
                 result["failure"] = f"Browser run failed: {str(exc)[:350]}"
             finally:

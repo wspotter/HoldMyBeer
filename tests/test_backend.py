@@ -181,6 +181,41 @@ def test_guided_demo_preserves_dirty_workflow_and_requires_explicit_review(serve
             browser.close()
 
 
+def test_guided_demo_retry_after_refresh_failure_restores_practice_procedure(server):
+    from playwright.sync_api import sync_playwright, expect
+
+    base, _ = server
+    httpx.post(base + "/api/sessions", json={"title": "Existing workflow"})
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.goto(base)
+            expect(page.locator("#title")).to_have_value("Existing workflow")
+            failed = {"refresh": False}
+
+            def fail_one_refresh(route):
+                if route.request.method == "GET" and route.request.url == f"{base}/api/sessions" and not failed["refresh"]:
+                    failed["refresh"] = True
+                    route.abort()
+                else:
+                    route.continue_()
+
+            page.route("**/api/sessions", fail_one_refresh)
+            page.locator("#guidedStart").click()
+            expect(page.locator("#guidedStatus")).to_contain_text("Could not create the separate practice workflow")
+            assert failed["refresh"]
+            assert len(httpx.get(base + "/api/sessions").json()["sessions"]) == 2
+
+            page.unroute("**/api/sessions", fail_one_refresh)
+            page.locator("#guidedStart").click()
+            expect(page.locator("#steps .step")).to_have_count(4)
+            expect(page.locator("#title")).to_have_value("Guided practice · Save a draft")
+            expect(page.locator("#reviewed")).to_be_disabled()
+        finally:
+            browser.close()
+
+
 def test_media_is_bounded_and_origin_is_local_only(server, monkeypatch):
     base, _ = server
     session = httpx.post(base + "/api/sessions", json={"title": "Capture"}).json()

@@ -7,6 +7,7 @@ let guidedActive = false;
 let guidedInspected = false;
 let guidedSessionId = null;
 let guidedStarting = false;
+let guidedInitialized = false;
 let guidedStatusText = "The guided demo has not started.";
 let session = null,
   sessions = [],
@@ -466,6 +467,23 @@ async function newSession() {
   }
 }
 $("newSession").onclick = newSession;
+function initializeGuidedWorkflow() {
+  session.procedure.steps = structuredClone(practiceSteps);
+  dirty = true;
+  renderSteps();
+  $("filename").value = "guided-first-use.txt";
+  $("caption").value = "A fresh caption for the guided practice draft.";
+  $("variant").value = "normal";
+  $("mediaMode").value = "new";
+  syncMediaMode();
+  $("reviewed").checked = false;
+  $("reviewed").disabled = true;
+  guidedActive = true;
+  guidedInspected = false;
+  guidedInitialized = true;
+  setTab("teach");
+  guidedMessage("1/4 · A separate fixture workflow is ready. Inspect the four actions below, then confirm you reviewed them.");
+}
 $("guidedStart").onclick = async () => {
   if (guidedStarting) return;
   guidedStarting = true;
@@ -490,6 +508,10 @@ $("guidedStart").onclick = async () => {
       if (session?.id !== guidedSessionId) await selectSession(guidedSessionId);
       if (session?.id !== guidedSessionId) return;
       guidedActive = true;
+      if (!guidedInitialized) {
+        initializeGuidedWorkflow();
+        return;
+      }
       guidedMessage(guidedStatusText);
       return;
     }
@@ -500,22 +522,11 @@ $("guidedStart").onclick = async () => {
       body: JSON.stringify({ title: "Guided practice · Save a draft" }),
     });
     guidedSessionId = created.id;
+    guidedInitialized = false;
     await refresh();
     await selectSession(created.id);
     if (session?.id !== created.id) throw Error("Could not select the new practice workflow.");
-    session.procedure.steps = structuredClone(practiceSteps);
-    dirty = true;
-    renderSteps();
-    $("filename").value = "guided-first-use.txt";
-    $("caption").value = "A fresh caption for the guided practice draft.";
-    $("variant").value = "normal";
-    $("mediaMode").value = "new";
-    syncMediaMode();
-    $("reviewed").checked = false;
-    $("reviewed").disabled = true;
-    guidedActive = true;
-    setTab("teach");
-    guidedMessage("1/4 · A separate fixture workflow is ready. Inspect the four actions below, then confirm you reviewed them.");
+    initializeGuidedWorkflow();
   } catch (error) {
     guidedMessage("Could not create the separate practice workflow. Check the local preview connection, then try again.");
   } finally {

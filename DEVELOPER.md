@@ -5,7 +5,8 @@
 FastAPI serves the same-page recording/practice workspace on loopback:
 
 ```bash
-python3 -m uvicorn holdmybeer.app:app --host 127.0.0.1 --port 18940
+holdmybeer doctor
+holdmybeer
 ```
 
 Runtime recordings, proposals, SQLite data and screenshots belong outside the checkout under `HMB_DATA_DIR` (default `~/.local/share/holdmybeer`). No Printery service, LAN URL or managed deployment is configured by this repo. The current interface contract is [docs/CONTRACT.md](docs/CONTRACT.md).
@@ -41,3 +42,11 @@ Developer README updated for the procedure, proposal, MCP and packaging interfac
 ## Blended media trials
 
 `select_media` is the preferred first action and accepts new/reuse modes; legacy `upload` procedures remain valid. Reuse resolves a retained fixture draft ID, preserving its filename while reconstructing generated fixture bytes. Run input snapshots retain this distinction. Optional bounded batches run sequentially, retain individual receipts and stop on the first failed item. The workspace keeps one item as the default. This is fixture-only file reuse, not retained original media.
+
+## Unreleased first-use slice — October 15, 2026
+
+`holdmybeer` and `python -m holdmybeer` launch the packaged app. The CLI reserves the requested socket before importing the app or creating storage, passes that socket to Uvicorn Server.run, and prints the actual selected port. Defaults remain 127.0.0.1:18940. Explicit `--host` can expose the app; keep loopback for personal data. `--data-dir` overrides HMB_DATA_DIR. Doctor checks required imports and the matching executable without importing the app; executable presence does not prove OS libraries or arbitrary site support. Optional frame tools do not fail doctor.
+
+The guided UI creates a dedicated fixture session, guards dirty state and recording, requires inspection plus explicit trial authorization, and reuses the existing run/history APIs. Guided state is scoped to its session; switching to a personal workflow restores ordinary controls. It does not analyze a recording automatically or install Hermes skills. The external engineering acceptance artifact records the installed-wheel/browser receipt and exact candidate revision; no published release or deployment is implied.
+
+Verify with `python -m pytest -q tests`, `node --check web/app.js`, a clean wheel installation outside the source tree, and `tests/wheel_smoke.py` under that interpreter. CLI tests include actual subprocess HTTP launch, occupied socket, custom storage, read-only doctor and actionable module commands. Browser tests include dirty-state protection, authorization, session switching, retained draft, and simulated missing-browser/connection recovery.

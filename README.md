@@ -2,7 +2,7 @@
 
 **Teach your agent by showing it.**
 
-Local teaching alpha `0.2.0a1`. See the [prerelease](https://github.com/wspotter/HoldMyBeer/releases/tag/v0.2.0a1) for the installable wheel and checksum.
+Local teaching alpha `0.2.0a1`. The launcher and guided demo below are unreleased source changes; the existing prerelease predates them. See the [prerelease](https://github.com/wspotter/HoldMyBeer/releases/tag/v0.2.0a1) for the installable wheel and checksum.
 
 The goal: show an app workflow, let the agent ask questions, then watch it try and improve from your corrections. This first prototype supplies the recording workspace and a reproducible trial engine. HoldMyBeer is an early plugin/skill project for teaching and checking browser workflows with the agent you already use. The shared engine is intended to support MCP-compatible clients such as Codex, Claude Code and editor integrations; Hermes is the first adapter. A stdio MCP bridge now exposes local recordings and teaching proposals; see [client setup](docs/CLIENTS.md). Individual client installations still need end-to-end verification.
 
@@ -26,12 +26,15 @@ python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -e '.[test]'
 python3 -m playwright install chromium
-python3 -m uvicorn holdmybeer.app:app --host 127.0.0.1 --port 18940
+holdmybeer doctor
+holdmybeer
 ```
 
-The source checkout is the contributor path. Built wheels include the workspace assets and MCP executable; a clean wheel installation is checked separately. The native Hermes scaffold remains source-only. Frame inspection also requires `ffmpeg` and `ffprobe` on PATH.
+The source checkout is the contributor path. After installing a wheel built from this checkout, the same `holdmybeer` command launches it without the source tree. `python -m holdmybeer` is equivalent. Use `--port 0` for a free port or `--data-dir /path/to/private/data` to choose storage; an occupied port stops with advice instead of silently changing ports. Doctor is read-only: it checks imports and the matching Chromium executable, gives repair commands and reports optional frame tools. It does not prove every browser system library is available. Built wheels include the workspace assets and MCP executable; a clean wheel installation is checked separately. The native Hermes scaffold remains source-only. Frame inspection also requires `ffmpeg` and `ffprobe` on PATH.
 
 Open <http://127.0.0.1:18940>. Data is stored outside the repository under `~/.local/share/holdmybeer` by default; set `HMB_DATA_DIR` to choose another private local directory. Browser capture may require a secure context; use localhost as shown.
+
+Click **Try a guided demo**, inspect the four actions, confirm inspection, then explicitly authorize the trial in **Let it try**. The separate practice workflow preserves saved personal workflows and refuses to replace unsaved edits. A successful run shows the retained filename, caption and draft ID; history survives refresh. This fixture-only demo does not automate a real website. Browser or connection errors show a repair step; repair the setup and authorize a retry yourself.
 
 ## Contribute
 

@@ -39,11 +39,24 @@
             <p class="intro-copy">
               A workspace for teaching your agent how you actually work.
             </p>
+            <button class="primary" id="guidedStart" type="button">Try a guided demo <span>↗</span></button>
           </div>
           <div class="stamp">
             HOLD MY<br /><strong>BEER.</strong><span>LET ME TRY THIS.</span>
           </div>
         </div>
+        <section id="guidedDemo" class="guided-demo" aria-labelledby="guidedTitle" hidden>
+          <p class="eyebrow">FIXTURE-ONLY FIRST USE</p>
+          <h2 id="guidedTitle">A new practice workflow, kept separate.</h2>
+          <p id="guidedStatus" role="status" aria-live="polite" aria-atomic="true">The guided demo has not started.</p>
+          <ol>
+            <li>Create a dedicated practice workflow with four reviewed actions.</li>
+            <li>Inspect the actions, then explicitly authorize the local run.</li>
+            <li>Check the retained receipt for a fresh filename, caption, and draft ID.</li>
+          </ol>
+          <button id="guidedConfirmInspect" class="quiet" type="button" disabled>I inspected these four actions</button>
+          <small>This runs only against HoldMyBeer’s harmless local fixture. It does not post to a real platform or prove generalized browser automation.</small>
+        </section>
         <section class="start-guide" aria-label="Start here">
           <p class="eyebrow">START HERE</p>
           <ol>
@@ -232,7 +245,7 @@ A fresh example, prepared for review.</textarea
             <div class="evidence-pane">
               <div class="section-title">
                 <h3>Run evidence</h3>
-                <span id="runStatus">AWAITING TRIAL</span>
+                <span id="runStatus" role="status" aria-live="polite" aria-atomic="true">AWAITING TRIAL</span>
               </div>
               <select
                 id="runHistory"

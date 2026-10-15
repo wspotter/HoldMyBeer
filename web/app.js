@@ -3,6 +3,8 @@ let dirty = false;
 let queuedItems = [];
 let reusableDrafts = [];
 let savedProcedure = null;
+let guidedActive = false;
+let guidedInspected = false;
 let session = null,
   sessions = [],
   moments = [],
@@ -42,12 +44,29 @@ function toast(message) {
   $("toast").classList.add("show");
   setTimeout(() => $("toast").classList.remove("show"), 3500);
 }
+function guidedMessage(message) {
+  $("guidedStatus").textContent = message;
+}
+function safeTrialFailure(message) {
+  const value = String(message || "");
+  if (/bundled browser unavailable|playwright|chromium|browser could not start|executable doesn't exist/i.test(value)) {
+    return "The practice browser is unavailable. Run `holdmybeer doctor`; if Chromium is missing, install it in the same Python environment with `python -m playwright install chromium`, then retry.";
+  }
+  if (/failed to fetch|networkerror|load failed|connection refused|could not reach/i.test(value)) {
+    return "Could not reach the local workspace. Check that HoldMyBeer is still running on its loopback preview, then refresh and retry.";
+  }
+  if (/traceback|exception|no module named|\.py:\d+/i.test(value)) {
+    return "The local trial hit a runtime error. Run `holdmybeer doctor`, check the local server log for details, repair the reported issue, then retry.";
+  }
+  return value.slice(0, 300) || "The trial did not verify. Review the checkpoint evidence, repair the local setup, then authorize and retry.";
+}
 async function api(path, options = {}) {
   const r = await fetch(path, {
     ...options,
     headers: { "Content-Type": "application/json", ...options.headers },
   });
   if (!r.ok) {
+    if (r.status >= 500) throw Error("The local workspace returned an error. Check its local server log and retry.");
     const raw = await r.text();
     let d;
     try {
@@ -78,6 +97,7 @@ function setTab(name) {
     b.classList.toggle("active", b.dataset.tab === name);
     b.setAttribute("aria-selected", String(b.dataset.tab === name));
   });
+  $("guidedConfirmInspect").disabled = !guidedActive || name !== "teach" || guidedInspected;
 }
 document
   .querySelectorAll("[data-tab]")
@@ -233,7 +253,7 @@ function renderSingleRun(run, box = $("results"), includeStatus = true) {
       "run-summary",
     ),
   );
-  if (run.failure) box.append(textEl("div", run.failure, "failure"));
+  if (run.failure) box.append(textEl("div", safeTrialFailure(run.failure), "failure"));
   for (const step of run.steps || []) {
     const row = textEl("div", "", "run-step");
     row.append(textEl("span", step.status === "passed" ? "✓" : "↳", "tick"));
@@ -429,6 +449,61 @@ async function newSession() {
   }
 }
 $("newSession").onclick = newSession;
+$("guidedStart").onclick = async () => {
+  $("guidedDemo").hidden = false;
+  if (guidedActive) {
+    guidedMessage("This dedicated practice workflow is already open. Continue its guided steps below.");
+    return;
+  }
+  if (dirty) {
+    guidedMessage("Not started: save your unsaved edits or leave them as they are. The demo will not replace a workflow with unsaved changes.");
+    toast("Save notes before starting the separate guided workflow; no edits were changed.");
+    return;
+  }
+  if (recorder?.state === "recording") {
+    guidedMessage("Not started: stop and save the current recording first.");
+    toast("Stop recording before starting the guided demo.");
+    return;
+  }
+  try {
+    guidedMessage("Creating a separate fixture workflow; your current workflow stays saved.");
+    const created = await api("/api/sessions", {
+      method: "POST",
+      body: JSON.stringify({ title: "Guided practice · Save a draft" }),
+    });
+    await refresh();
+    await selectSession(created.id);
+    session.procedure.steps = structuredClone(practiceSteps);
+    dirty = true;
+    renderSteps();
+    $("filename").value = "guided-first-use.txt";
+    $("caption").value = "A fresh caption for the guided practice draft.";
+    $("variant").value = "normal";
+    $("mediaMode").value = "new";
+    syncMediaMode();
+    $("reviewed").checked = false;
+    $("reviewed").disabled = true;
+    guidedActive = true;
+    guidedInspected = false;
+    setTab("teach");
+    guidedMessage("1/4 · A separate fixture workflow is ready. Inspect the four actions below, then confirm you reviewed them.");
+  } catch (error) {
+    guidedMessage("Could not create the separate practice workflow. Check the local preview connection, then try again.");
+  }
+};
+$("guidedConfirmInspect").onclick = () => {
+  if (!guidedActive || $("teach").hidden) return;
+  guidedInspected = true;
+  $("reviewed").disabled = false;
+  setTab("test");
+  guidedMessage("2/4 · Actions inspected. In Let it try, review the fresh filename and caption, then explicitly check the authorization box.");
+};
+$("reviewed").addEventListener("change", () => {
+  if (!guidedActive) return;
+  guidedMessage($("reviewed").checked
+    ? "3/4 · Trial authorized. Press Run reviewed procedure when you are ready; it has not run yet."
+    : "2/4 · Authorization cleared. Review the inputs and explicitly check the box before running.");
+});
 async function save(revision = false) {
   if (!session) return;
   const answers = { ...session.answers, moments: JSON.stringify(moments) };
@@ -578,10 +653,15 @@ $("run").onclick = async () => {
     toast("Stop recording before running a trial.");
     return;
   }
-  if (!$("reviewed").checked) { toast("Review the actions in Explain the why, then authorize this trial."); return; }
+  if (!$("reviewed").checked) {
+    toast("Review the actions in Explain the why, then authorize this trial.");
+    if (guidedActive) guidedMessage("2/4 · Review the procedure, confirm inspection, then explicitly check the authorization box.");
+    return;
+  }
   b.disabled = true;
   b.textContent = "Browser trial running…";
   $("runStatus").textContent = "RUNNING";
+  if (guidedActive) guidedMessage("3/4 · Running the reviewed local fixture in Chromium. This may take a few seconds.");
   $("results").replaceChildren(
     textEl("p", queuedItems.length ? `Opening the practice app for ${queuedItems.length} queued item${queuedItems.length === 1 ? "" : "s"}…` : "Opening the practice app and checking the selected inputs…", "empty"),
   );
@@ -607,6 +687,14 @@ $("run").onclick = async () => {
     renderQueue();
     renderHistory();
     renderRun(result);
+    if (guidedActive) {
+      const actual = Array.isArray(result.runs) ? result.runs[0] : result;
+      if (actual?.status === "verified" && actual.filename === item.filename && actual.caption === item.caption && actual.draft_id) {
+        guidedMessage(`4/4 · Verified and persisted. Filename: ${actual.filename}. Caption: ${actual.caption}. Draft ID: ${actual.draft_id}.`);
+      } else {
+        guidedMessage(`Trial did not verify. ${safeTrialFailure(actual?.failure || "Review the checkpoint evidence below, repair the local setup, then explicitly authorize a retry.")}`);
+      }
+    }
     await loadReusableDrafts();
     toast(
       result.status === "verified"
@@ -614,8 +702,10 @@ $("run").onclick = async () => {
         : "Trial stopped. Review the evidence.",
     );
   } catch (e) {
-    toast(e.message);
+    const message = safeTrialFailure(e.message);
+    toast(guidedActive ? message : e.message);
     $("runStatus").textContent = "FAILED";
+    if (guidedActive) guidedMessage(`Trial failed. ${message}`);
   } finally {
     b.disabled = false;
     b.textContent = "Run reviewed procedure ↗";
@@ -654,12 +744,26 @@ $("addItem").onclick = () => {
 loadReusableDrafts();
 
 document.addEventListener("input", (e) => {
-  if (["filename", "caption", "variant"].includes(e.target.id)) $("reviewed").checked = false;
+  if (["filename", "caption", "variant"].includes(e.target.id)) {
+    $("reviewed").checked = false;
+    if (guidedActive) guidedMessage("Inputs changed. Review them, then explicitly authorize the trial again.");
+  }
   if (
     ["title", "notes"].includes(e.target.id) ||
     e.target.closest("#questions,#steps")
   )
-    { dirty = true; if (e.target.closest("#steps")) $("reviewed").checked = false; }
+    {
+      dirty = true;
+      if (e.target.closest("#steps")) {
+        $("reviewed").checked = false;
+        if (guidedActive) {
+          guidedInspected = false;
+          $("reviewed").disabled = true;
+          guidedMessage("Procedure changed. Inspect all four actions again before authorizing another trial.");
+          setTab($("teach").hidden ? "test" : "teach");
+        }
+      }
+    }
 });
 window.addEventListener("beforeunload", (e) => {
   if (dirty || recorder?.state === "recording") {

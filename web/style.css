@@ -803,6 +803,21 @@ a:focus-visible {
   margin-top: 16px;
 }
 
+.guided-demo {
+  margin: 24px 0;
+  padding: 20px 24px;
+  border: 1px solid var(--line);
+  border-left: 4px solid #93a875;
+  background: #f2f2e9;
+  max-width: 850px;
+}
+.guided-demo h2 { margin: 4px 0 8px; font-size: 22px; }
+.guided-demo ol { padding-left: 20px; line-height: 1.7; }
+.guided-demo p, .guided-demo small { line-height: 1.6; }
+.guided-demo small { display: block; color: var(--muted); max-width: 700px; }
+.guided-demo [disabled] { opacity: .55; cursor: not-allowed; }
+#guidedStart { margin-top: 18px; }
+
 .practice-panel { margin: 24px 0; }
 .practice-panel iframe { width: 100%; height: 420px; border: 1px solid var(--line); border-radius: 8px; background: #f5f4ec; }
 .step select { width: 100%; margin: 6px 0 14px; }

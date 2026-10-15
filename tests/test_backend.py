@@ -1,3 +1,4 @@
+import json
 import socket
 import threading
 import time
@@ -88,6 +89,83 @@ def test_browser_saves_changed_steps_as_new_revision_and_preserves_conflicting_e
             expect(page.locator('#step-0-goal')).to_have_value('Keep this unsaved edit')
             expect(page.locator('#revision')).to_have_text('3')
             assert httpx.get(url).json()['procedure'] == newer
+        finally:
+            browser.close()
+
+
+def test_guided_demo_preserves_dirty_workflow_and_requires_explicit_review(server):
+    from playwright.sync_api import sync_playwright, expect
+
+    base, _ = server
+    personal = httpx.post(base + "/api/sessions", json={"title": "My personal workflow"}).json()
+    assert httpx.put(base + f"/api/sessions/{personal['id']}", json={"notes": "Saved personal notes"}).status_code == 200
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.goto(base)
+            expect(page.locator("#notes")).to_have_value("Saved personal notes")
+            page.locator("#notes").fill("Unsaved personal edit")
+            page.locator("#guidedStart").click()
+            expect(page.locator("#guidedStatus")).to_contain_text("will not replace a workflow with unsaved changes")
+            assert len(httpx.get(base + "/api/sessions").json()["sessions"]) == 1
+            expect(page.locator("#notes")).to_have_value("Unsaved personal edit")
+
+            page.locator("#save").click()
+            expect(page.locator("#guidedStatus")).to_be_visible()
+            page.locator("#guidedStart").click()
+            expect(page.locator("#steps .step")).to_have_count(4)
+            expect(page.locator("#guidedStatus")).to_contain_text("1/4")
+            expect(page.locator("#reviewed")).not_to_be_checked()
+            expect(page.locator("#reviewed")).to_be_disabled()
+            assert len(httpx.get(base + "/api/sessions").json()["sessions"]) == 2
+
+            page.locator("#guidedConfirmInspect").click()
+            expect(page.locator("#reviewed")).to_be_enabled()
+            expect(page.locator("#reviewed")).not_to_be_checked()
+            page.locator("#run").click()
+            expect(page.locator("#guidedStatus")).to_contain_text("explicitly check")
+            assert httpx.get(base + f"/api/sessions/{personal['id']}").json()["runs"] == []
+
+            page.locator("#reviewed").check()
+            expect(page.locator("#guidedStatus")).to_contain_text("3/4")
+            with page.expect_response(lambda response: response.url.endswith("/run") and response.request.method == "POST") as trial:
+                page.locator("#run").click()
+            result = trial.value.json()
+            assert result["status"] == "verified", result
+            assert result["filename"] == "guided-first-use.txt"
+            assert result["caption"] == "A fresh caption for the guided practice draft."
+            assert result["draft_id"]
+            expect(page.locator("#guidedStatus")).to_contain_text("4/4")
+            expect(page.locator("#guidedStatus")).to_contain_text(result["draft_id"])
+            drafts = httpx.get(base + "/api/fixture/drafts").json()["drafts"]
+            retained = next(draft for draft in drafts if draft["id"] == result["draft_id"])
+            assert retained["filename"] == "guided-first-use.txt"
+            assert retained["caption"] == "A fresh caption for the guided practice draft."
+            saved_personal = httpx.get(base + f"/api/sessions/{personal['id']}").json()
+            assert saved_personal["notes"] == "Unsaved personal edit"
+            assert saved_personal["runs"] == []
+
+            page.locator("#filename").fill("retry-after-browser-fix.txt")
+            page.locator("#reviewed").check()
+            page.route("**/api/sessions/*/run", lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"status": "failed", "filename": "retry-after-browser-fix.txt",
+                    "caption": "A fresh caption for the guided practice draft.", "failure":
+                    "Bundled browser unavailable or could not start: Traceback (most recent call last): /private/path"}),
+            ))
+            page.locator("#run").click()
+            expect(page.locator("#guidedStatus")).to_contain_text("holdmybeer doctor")
+            expect(page.locator("#guidedStatus")).not_to_contain_text("Traceback")
+
+            page.unroute("**/api/sessions/*/run")
+            page.locator("#filename").fill("retry-after-connection-fix.txt")
+            page.locator("#reviewed").check()
+            page.route("**/api/sessions/*/run", lambda route: route.abort())
+            page.locator("#run").click()
+            expect(page.locator("#guidedStatus")).to_contain_text("local workspace")
+            expect(page.locator("#guidedStatus")).to_contain_text("loopback preview")
         finally:
             browser.close()
 

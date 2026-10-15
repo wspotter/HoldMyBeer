@@ -5,6 +5,9 @@ let reusableDrafts = [];
 let savedProcedure = null;
 let guidedActive = false;
 let guidedInspected = false;
+let guidedSessionId = null;
+let guidedStarting = false;
+let guidedStatusText = "The guided demo has not started.";
 let session = null,
   sessions = [],
   moments = [],
@@ -45,6 +48,7 @@ function toast(message) {
   setTimeout(() => $("toast").classList.remove("show"), 3500);
 }
 function guidedMessage(message) {
+  guidedStatusText = message;
   $("guidedStatus").textContent = message;
 }
 function safeTrialFailure(message) {
@@ -318,6 +322,10 @@ async function selectSession(id) {
   }
   try {
     session = await api(`/api/sessions/${id}`);
+    guidedActive = session.id === guidedSessionId;
+    $("reviewed").checked = false;
+    $("reviewed").disabled = guidedActive && !guidedInspected;
+    setTab(document.querySelector("[data-tab].active")?.dataset.tab || "record");
     savedProcedure = structuredClone(session.procedure);
     queuedItems = []; renderQueue();
     dirty = false;
@@ -345,6 +353,15 @@ async function selectSession(id) {
       ? "RECORDING RETAINED"
       : "NO RECORDING YET";
     renderHistory();
+    if (guidedActive) {
+      const latest = session.runs?.at(-1);
+      $("filename").value = latest?.filename || "guided-first-use.txt";
+      $("caption").value = latest?.caption || "A fresh caption for the guided practice draft.";
+      $("variant").value = latest?.inputs?.variant || "normal";
+      $("mediaMode").value = "new";
+      syncMediaMode();
+      guidedMessage(guidedStatusText);
+    }
     if (session.runs?.length) renderRun(session.runs.at(-1));
     else {
       $("runStatus").textContent = "AWAITING TRIAL";
@@ -450,29 +467,42 @@ async function newSession() {
 }
 $("newSession").onclick = newSession;
 $("guidedStart").onclick = async () => {
+  if (guidedStarting) return;
+  guidedStarting = true;
+  $("guidedStart").disabled = true;
   $("guidedDemo").hidden = false;
-  if (guidedActive) {
-    guidedMessage("This dedicated practice workflow is already open. Continue its guided steps below.");
-    return;
-  }
-  if (dirty) {
-    guidedMessage("Not started: save your unsaved edits or leave them as they are. The demo will not replace a workflow with unsaved changes.");
-    toast("Save notes before starting the separate guided workflow; no edits were changed.");
-    return;
-  }
-  if (recorder?.state === "recording") {
-    guidedMessage("Not started: stop and save the current recording first.");
-    toast("Stop recording before starting the guided demo.");
-    return;
-  }
   try {
+    if (guidedActive && session?.id === guidedSessionId) {
+      guidedMessage(guidedStatusText);
+      return;
+    }
+    if (dirty) {
+      guidedMessage("Not started: save your unsaved edits or leave them as they are. The demo will not replace a workflow with unsaved changes.");
+      toast("Save notes before starting the separate guided workflow; no edits were changed.");
+      return;
+    }
+    if (recorder?.state === "recording") {
+      guidedMessage("Not started: stop and save the current recording first.");
+      toast("Stop recording before starting the guided demo.");
+      return;
+    }
+    if (guidedSessionId) {
+      if (session?.id !== guidedSessionId) await selectSession(guidedSessionId);
+      if (session?.id !== guidedSessionId) return;
+      guidedActive = true;
+      guidedMessage(guidedStatusText);
+      return;
+    }
+    guidedInspected = false;
     guidedMessage("Creating a separate fixture workflow; your current workflow stays saved.");
     const created = await api("/api/sessions", {
       method: "POST",
       body: JSON.stringify({ title: "Guided practice · Save a draft" }),
     });
+    guidedSessionId = created.id;
     await refresh();
     await selectSession(created.id);
+    if (session?.id !== created.id) throw Error("Could not select the new practice workflow.");
     session.procedure.steps = structuredClone(practiceSteps);
     dirty = true;
     renderSteps();
@@ -484,11 +514,13 @@ $("guidedStart").onclick = async () => {
     $("reviewed").checked = false;
     $("reviewed").disabled = true;
     guidedActive = true;
-    guidedInspected = false;
     setTab("teach");
     guidedMessage("1/4 · A separate fixture workflow is ready. Inspect the four actions below, then confirm you reviewed them.");
   } catch (error) {
     guidedMessage("Could not create the separate practice workflow. Check the local preview connection, then try again.");
+  } finally {
+    guidedStarting = false;
+    $("guidedStart").disabled = false;
   }
 };
 $("guidedConfirmInspect").onclick = () => {

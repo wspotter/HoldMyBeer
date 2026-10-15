@@ -166,6 +166,17 @@ def test_guided_demo_preserves_dirty_workflow_and_requires_explicit_review(serve
             page.locator("#run").click()
             expect(page.locator("#guidedStatus")).to_contain_text("local workspace")
             expect(page.locator("#guidedStatus")).to_contain_text("loopback preview")
+
+            page.locator("#newSession").click()
+            expect(page.locator("#title")).to_have_value("New workflow")
+            expect(page.locator("#reviewed")).to_be_enabled()
+            expect(page.locator("#reviewed")).not_to_be_checked()
+            page.locator("#guidedStart").click()
+            expect(page.locator("#title")).to_have_value("Guided practice · Save a draft")
+            expect(page.locator("#guidedStatus")).to_contain_text("local workspace")
+            assert len(httpx.get(base + "/api/sessions").json()["sessions"]) == 3
+            page.locator("#guidedStart").dblclick()
+            assert len(httpx.get(base + "/api/sessions").json()["sessions"]) == 3
         finally:
             browser.close()
 

@@ -57,12 +57,15 @@ def main():
                     async with ClientSession(read, write) as client:
                         await client.initialize()
                         tools = await client.list_tools()
-                        assert len(tools.tools) == 4
+                        assert len(tools.tools) == 5
+                        history = await client.call_tool('hmb_procedure_history', {'session_id': session['id'], 'revision': 2})
+                        assert not history.isError
+                        assert json.loads(history.content[0].text)['procedure']['steps'] == steps
                         result = await client.call_tool("hmb_list_sessions", {})
                         assert not result.isError
                         assert session["id"] in json.dumps(result.model_dump())
             asyncio.run(protocol())
-            print("Installed wheel: web assets, reviewed Chromium trial, retained screenshot and four-tool MCP handshake passed")
+            print("Installed wheel: web assets, reviewed Chromium trial, retained screenshot and five-tool MCP handshake with procedure history passed")
         finally:
             server.should_exit = True
             worker.join(timeout=5)

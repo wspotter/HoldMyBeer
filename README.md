@@ -12,7 +12,7 @@ The goal: show an app workflow, let the agent ask questions, then watch it try a
 - Manual teaching notes, questions, and editable procedure steps.
 - Reviewed executable actions drive a real Playwright trial with supplied captions and new or reused fixture files. Changed controls stop; editing the action target and saving a new revision repairs the workflow. Retained draft checks and screenshots supply evidence.
 - One media item by default, with an optional queue of up to ten items. Reuse selects a retained fixture draft; each item gets its own receipt, and a failure stops the queue. The fixture reconstructs generated text files by filename; original video bytes are not retained.
-- Saved procedure snapshots and trial history, plus a same-page practice task.
+- Saved procedure revision history with overwrite protection, immutable trial snapshots, and a same-page practice task. Your connected agent can read the same saved revisions through MCP.
 - MCP tools return selected recording frames to your existing agent and place its observations, questions and validated procedure in a local review inbox.
 
 The preview does **not** run its own AI model, automatically analyze a recording on capture, publish to social networks, or provide a production Hermes installation. Hermes support is an opt-in scaffold with one read-only status tool. The runner exercises the bundled fixture; it does not automate arbitrary websites.

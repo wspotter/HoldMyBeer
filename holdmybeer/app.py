@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
@@ -27,6 +27,7 @@ FIXTURE_HTML = (_ASSET_DIR / "fixture.html").read_text()
 
 
 from .models import StrictModel, CreateSession, Procedure
+from .revisions import read_revisions
 
 
 class UpdateSession(StrictModel):
@@ -117,7 +118,19 @@ class Store:
             CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, data TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, session_id TEXT NOT NULL, data TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS drafts(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS procedure_revisions(
+                session_id TEXT NOT NULL, revision INTEGER NOT NULL, data TEXT NOT NULL,
+                saved_at TEXT NOT NULL, source TEXT NOT NULL,
+                PRIMARY KEY(session_id, revision));
             """)
+            db.execute('BEGIN IMMEDIATE')
+            # Preserve only the current known legacy revision; earlier overwrites
+            # cannot be reconstructed safely from revision numbers alone.
+            for row in db.execute('''SELECT id,data FROM sessions s WHERE NOT EXISTS
+                (SELECT 1 FROM procedure_revisions p WHERE p.session_id=s.id)''').fetchall():
+                procedure = json.loads(row['data'])['procedure']
+                db.execute('INSERT INTO procedure_revisions VALUES(?,?,?,?,?)',
+                           (row['id'], procedure['revision'], json.dumps(procedure), _now(), 'legacy_current'))
 
     def connect(self):
         db = sqlite3.connect(self.db_path, timeout=10)
@@ -135,7 +148,32 @@ class Store:
 
     def save_session(self, data: dict):
         with self.connect() as db:
-            db.execute("INSERT OR REPLACE INTO sessions(id,data) VALUES(?,?)", (data["id"], json.dumps(data)))
+            db.execute("INSERT INTO sessions(id,data) VALUES(?,?)", (data["id"], json.dumps(data)))
+            procedure = data['procedure']
+            db.execute('INSERT INTO procedure_revisions VALUES(?,?,?,?,?)',
+                       (data['id'], procedure['revision'], json.dumps(procedure), _now(), 'saved'))
+
+    def update_session(self, ident: str, patch: dict):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT data FROM sessions WHERE id=?', (ident,)).fetchone()
+            if row is None:
+                raise HTTPException(404, 'session not found')
+            data = json.loads(row[0])
+            if 'procedure' in patch:
+                current = Procedure.model_validate(data['procedure']).model_dump(exclude_none=True)
+                proposed = Procedure.model_validate(patch['procedure']).model_dump(exclude_none=True)
+                number = proposed['revision']
+                if number == current['revision'] and proposed == current:
+                    pass  # Retrying an identical save must not duplicate history.
+                elif number == current['revision'] + 1:
+                    db.execute('INSERT INTO procedure_revisions VALUES(?,?,?,?,?)',
+                               (ident, number, json.dumps(proposed), _now(), 'saved'))
+                else:
+                    raise HTTPException(409, f"Procedure changed or revision is invalid. Current revision is {current['revision']}; reload before editing and save changes as revision {current['revision'] + 1}.")
+                patch = {**patch, 'procedure': proposed}
+            data.update(patch)
+            db.execute('UPDATE sessions SET data=? WHERE id=?', (json.dumps(data), ident))
 
     def save_run(self, sid: str, data: dict):
         with self.connect() as db:
@@ -203,6 +241,21 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     @app.get("/api/sessions/{session_id}")
     def get_session(session_id: str): return app.state.store.get_session(session_id)
 
+    def procedure_history(session_id, revision=None, before_revision=None):
+        with app.state.store.connect() as db:
+            try:
+                return read_revisions(db, session_id, revision, before_revision)
+            except LookupError as exc:
+                raise HTTPException(404, str(exc)) from exc
+
+    @app.get('/api/sessions/{session_id}/procedure-revisions')
+    def list_procedure_revisions(session_id: str, before_revision: int | None = Query(default=None, ge=1)):
+        return procedure_history(session_id, before_revision=before_revision)
+
+    @app.get('/api/sessions/{session_id}/procedure-revisions/{revision}')
+    def get_procedure_revision(session_id: str, revision: int):
+        return procedure_history(session_id, revision=revision) if revision > 0 else Response(status_code=404)
+
     @app.get("/api/sessions/{session_id}/proposal")
     def get_proposal(session_id: str):
         app.state.store.get_session(session_id)
@@ -211,11 +264,8 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     @app.put("/api/sessions/{session_id}")
     def update_session(session_id: str, body: UpdateSession):
-        data = app.state.store.get_session(session_id)
         patch = body.model_dump(exclude_unset=True, exclude_none=True)
-        for key, value in patch.items():
-            if value is not None: data[key] = value
-        app.state.store.save_session({k: v for k, v in data.items() if k != "runs"})
+        app.state.store.update_session(session_id, patch)
         return app.state.store.get_session(session_id)
 
     @app.post("/api/sessions/{session_id}/media")
@@ -246,7 +296,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         finally:
             temp.unlink(missing_ok=True)
         data["media_url"] = f"/api/sessions/{session_id}/media"
-        app.state.store.save_session({k: v for k, v in data.items() if k != "runs"})
+        app.state.store.update_session(session_id, {'media_url': data['media_url']})
         return {"url": data["media_url"]}
 
     @app.get("/api/sessions/{session_id}/media")

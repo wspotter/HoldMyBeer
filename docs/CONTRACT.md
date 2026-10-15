@@ -7,6 +7,8 @@ The FastAPI workspace binds to loopback. Runtime media, SQLite data, proposals a
 - `GET /api/status`: current capability labels.
 - `GET/POST /api/sessions`: list/create workflows.
 - `GET/PUT /api/sessions/{id}`: retrieve or update title, notes, answers and procedure.
+- `GET /api/sessions/{id}/procedure-revisions`: latest 50 saved revisions, newest first; use `next_before_revision` as `before_revision` to page backwards.
+- `GET /api/sessions/{id}/procedure-revisions/{revision}`: exact retained procedure, save time and provenance.
 - `POST /api/sessions/{id}/media`: atomic bounded WebM/MP4 upload (100 MiB maximum).
 - `GET /api/sessions/{id}/media`: retained video.
 - `GET /api/sessions/{id}/proposal`: latest valid agent proposal, or `null`; never applies it.
@@ -35,9 +37,13 @@ Missing targets stop with `needs_teaching`; no alternate locator is guessed. The
 
 The UI invalidates its review checkbox when actions change. Saving a changed procedure advances its revision. A user then explicitly authorizes a local trial. The API remains a local developer interface; callers can explicitly request a run. The MCP bridge has no execution tool.
 
+Procedure saves are atomic with session changes. The current revision may be resubmitted only with identical contents; changed contents must use exactly the next revision. An explicit new revision may also retain the same steps. Stale, reused-with-different-content and skipped revisions return HTTP 409 without saving accompanying notes or answers. Notes-only and media updates preserve the latest procedure. Saved history is append-only through the application. For upgraded stores, history begins with the known current revision, labelled `legacy_current` with its retention time; overwritten older revisions cannot be reconstructed. Previous run snapshots remain available separately.
+
 ## Agent teaching bridge
 
 `hmb_list_sessions`, `hmb_get_session`, and `hmb_recording_frames` read bounded local evidence. Frame inspection accepts 1–6 finite timestamps and returns timestamp-labelled images scaled within 1280 × 720. Local ffprobe/ffmpeg use file/pipe protocols only and bounded subprocess work. A packet scan handles MediaRecorder WebM with missing duration metadata.
+
+`hmb_procedure_history` reads that same persisted history through MCP. Supply `revision` for an exact snapshot, or omit it for the newest 50; `before_revision` pages backwards. It cannot approve, replace or execute procedures.
 
 `hmb_propose_teaching` validates up to six timestamped observations, six questions and an executable procedure. It atomically writes a separate private proposal file. It cannot replace the reviewed session or execute anything. The workspace loads the latest proposal only when requested, displays observations/questions/actions, and waits for review.
 

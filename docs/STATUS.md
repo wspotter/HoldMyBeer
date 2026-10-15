@@ -2,6 +2,8 @@
 
 Working local alpha: single-page practice/recording workspace; timestamped video frames through stdio MCP; agent proposal inbox with observations/questions; reviewed four-action fixture execution; new/reused fixture media and optional queues of up to ten items; retained result checks; failures, repairs and immutable trial snapshots.
 
+October 15 checkpoint: atomic procedure saves reject revision collisions, stale edits and skipped numbers; saved revision history is available in the teaching UI and through the read-only `hmb_procedure_history` MCP tool. History begins at the known current revision for legacy stores. Local validation passed 29 tests, including real browser edits/conflicts and the stdio protocol; an independently installed wheel passed its browser trial and five-tool MCP handshake. Saved-profile Hermes consumption remains unverified.
+
 Verified through tests: session persistence, input validation, media preservation, loopback boundaries, normal/changed/corrected real-browser trials, actual stdio MCP handshake/image/proposal responses, and MediaRecorder WebM without duration metadata.
 
 The original user's recording was inspected through MCP. It shows an existing saved draft, a caption edit, and a new matching saved receipt. This establishes useful frame evidence, not a complete observation of every initial click.

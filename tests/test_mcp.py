@@ -19,9 +19,11 @@ def recording_store(tmp_path, monkeypatch):
     sid = str(uuid.uuid4())
     db = sqlite3.connect(root / "holdmybeer.sqlite3")
     db.executescript("CREATE TABLE sessions(id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE runs(id TEXT PRIMARY KEY,session_id TEXT,data TEXT NOT NULL);")
-    db.execute("INSERT INTO sessions VALUES (?,?)", (sid, json.dumps({"id": sid, "title": "local test", "created_at": "today", "notes": "untrusted", "media_url": "/media"})))
+    db.execute("INSERT INTO sessions VALUES (?,?)", (sid, json.dumps({"id": sid, "title": "local test", "created_at": "today", "notes": "untrusted", "media_url": "/media", "procedure": {"revision": 1, "steps": []}})))
     db.commit()
     db.close()
+    from holdmybeer.app import Store
+    Store(root)
     video = artifacts / f"{sid}.mp4"
     subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=1600x900:d=1", "-an", "-c:v", "mpeg4", "-y", str(video)], check=True, timeout=15, shell=False)
     monkeypatch.setenv("HMB_DATA_DIR", str(root))
@@ -130,12 +132,16 @@ def test_stdio_mcp_lists_tools_and_returns_image_content(recording_store):
                 await client.initialize()
                 tools = await client.list_tools()
                 assert {tool.name for tool in tools.tools} == {
-                    "hmb_list_sessions", "hmb_get_session", "hmb_recording_frames", "hmb_propose_teaching"
+                    "hmb_list_sessions", "hmb_get_session", "hmb_recording_frames", "hmb_propose_teaching", "hmb_procedure_history"
                 }
                 annotations = {tool.name: tool.annotations for tool in tools.tools}
                 assert annotations["hmb_recording_frames"].readOnlyHint is True
+                assert annotations["hmb_procedure_history"].readOnlyHint is True
                 assert annotations["hmb_propose_teaching"].readOnlyHint is False
                 assert all(item.destructiveHint is False and item.openWorldHint is False for item in annotations.values())
+                history = await client.call_tool('hmb_procedure_history', {'session_id': sid, 'revision': 1})
+                assert not history.isError
+                assert json.loads(history.content[0].text)['procedure'] == {'revision': 1, 'steps': []}
                 result = await client.call_tool("hmb_recording_frames", {"session_id": sid, "timestamps": [0.5]})
                 assert any(isinstance(block, types.ImageContent) and block.mimeType == "image/png" for block in result.content)
                 proposal = await client.call_tool("hmb_propose_teaching", {

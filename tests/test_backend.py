@@ -51,6 +51,47 @@ def test_sessions_persist_and_unknown_ids_are_rejected(server):
     assert httpx.put(base + f"/api/sessions/{created['id']}", json={"procedure": good_procedure}).status_code == 200
 
 
+def test_browser_saves_changed_steps_as_new_revision_and_preserves_conflicting_edits(server):
+    from playwright.sync_api import sync_playwright, expect
+
+    base, _ = server
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.goto(base)
+            page.locator('[data-tab="teach"]').click()
+            page.locator('#loadPractice').click()
+            page.locator('#save').click()
+            expect(page.locator('#revision')).to_have_text('2')
+            # Loading the same local steps again must not manufacture a change.
+            page.locator('#loadPractice').click()
+            with page.expect_response(lambda response: '/api/sessions/' in response.url and response.request.method == 'PUT'):
+                page.locator('#save').click()
+            expect(page.locator('#revision')).to_have_text('2')
+            page.locator('#step-0-goal').fill('Choose a fresh file')
+            page.locator('#save').click()
+            expect(page.locator('#revision')).to_have_text('3')
+            page.get_by_text('Saved procedure revisions', exact=True).click()
+            expect(page.locator('#procedureHistory > details')).to_have_count(3)
+            page.locator('#procedureHistory > details').nth(1).locator('summary').click()
+            expect(page.locator('#procedureHistory > details').nth(1)).to_contain_text('Select the requested media')
+            session = httpx.get(base + '/api/sessions').json()['sessions'][0]
+            original = session['procedure']
+            newer = {**original, 'revision': 4}
+            url = base + f"/api/sessions/{session['id']}"
+            assert httpx.put(url, json={'procedure': newer}).status_code == 200
+            page.locator('#step-0-goal').fill('Keep this unsaved edit')
+            with page.expect_response(lambda response: response.request.method == 'PUT') as conflict:
+                page.locator('#save').click()
+            assert conflict.value.status == 409
+            expect(page.locator('#step-0-goal')).to_have_value('Keep this unsaved edit')
+            expect(page.locator('#revision')).to_have_text('3')
+            assert httpx.get(url).json()['procedure'] == newer
+        finally:
+            browser.close()
+
+
 def test_media_is_bounded_and_origin_is_local_only(server, monkeypatch):
     base, _ = server
     session = httpx.post(base + "/api/sessions", json={"title": "Capture"}).json()
@@ -95,7 +136,7 @@ def test_real_browser_normal_changed_and_repaired_runs(server):
 def test_reviewed_procedure_runs_fresh_inputs_and_uses_saved_targets(server):
     base, _ = server
     session = httpx.post(base + "/api/sessions", json={"title": "Reviewed procedure"}).json()
-    procedure = {"revision": 7, "steps": [
+    procedure = {"revision": 2, "steps": [
         {"goal": "Choose media", "check": "File is selected", "action": "upload", "target": "Media", "input": "filename"},
         {"goal": "Enter caption", "check": "Caption is entered", "action": "fill", "target": "Caption", "input": "caption"},
         {"goal": "Save draft", "check": "Draft is submitted", "action": "click", "target": "Save draft"},
@@ -116,7 +157,7 @@ def test_reviewed_procedure_runs_fresh_inputs_and_uses_saved_targets(server):
     assert failed["procedure"] == procedure
     assert failed["draft_id"] is None
 
-    changed = {**procedure, "revision": 8, "steps": [*procedure["steps"]]}
+    changed = {**procedure, "revision": 3, "steps": [*procedure["steps"]]}
     changed["steps"][2] = {**changed["steps"][2], "target": "Store draft"}
     assert httpx.put(base + f"/api/sessions/{session['id']}", json={"procedure": changed}).status_code == 200
     taught = httpx.post(run_url, json={"caption": "Changed", "filename": "changed.mp4", "variant": "changed", "repair": False, "mode": "procedure"}).json()
@@ -169,7 +210,7 @@ def test_proposal_inbox_does_not_apply_agent_actions(server):
 def test_select_media_new_then_reuse_retained_filename_in_real_browser(server):
     base, _ = server
     session = httpx.post(base + "/api/sessions", json={"title": "Blended media"}).json()
-    procedure = {"revision": 1, "steps": [
+    procedure = {"revision": 2, "steps": [
         {"goal": "Choose media", "check": "File is selected", "action": "select_media", "target": "Media", "input": "filename"},
         {"goal": "Enter caption", "check": "Caption is entered", "action": "fill", "target": "Caption", "input": "caption"},
         {"goal": "Save draft", "check": "Draft is submitted", "action": "click", "target": "Save draft"},

@@ -2,6 +2,7 @@ const $ = (id) => document.getElementById(id);
 let dirty = false;
 let queuedItems = [];
 let reusableDrafts = [];
+let savedProcedure = null;
 let session = null,
   sessions = [],
   moments = [],
@@ -149,6 +150,38 @@ function renderSteps() {
   }
   $("revision").textContent = session.procedure?.revision || 1;
 }
+async function renderProcedureHistory() {
+  const id = session.id;
+  const box = $("procedureHistory");
+  box.replaceChildren(textEl("p", "Loading saved revisions…", "muted"));
+  async function page(before) {
+    const data = await api(`/api/sessions/${id}/procedure-revisions${before ? `?before_revision=${before}` : ""}`);
+    if (session.id !== id) return;
+    if (!before) box.replaceChildren();
+    for (const entry of data.revisions) {
+      const details = document.createElement("details");
+      details.append(textEl("summary", `Revision ${entry.procedure.revision} · ${entry.source === "legacy_current" ? "retained at upgrade" : "saved"} ${new Date(entry.saved_at).toLocaleString()}`));
+      const steps = document.createElement("ol");
+      for (const step of entry.procedure.steps) {
+        steps.append(textEl("li", `${step.goal}${step.target ? ` — ${step.target}` : ""}. Check: ${step.check}`));
+      }
+      details.append(steps);
+      if (!entry.procedure.steps.length) details.append(textEl("p", "No steps saved in this revision.", "muted"));
+      box.append(details);
+    }
+    if (data.next_before_revision) {
+      const more = textEl("button", "Older revisions", "quiet");
+      more.onclick = async () => {
+        more.disabled = true;
+        try { await page(data.next_before_revision); more.remove(); }
+        catch (error) { more.disabled = false; toast(error.message); }
+      };
+      box.append(more);
+    }
+  }
+  try { await page(); }
+  catch (error) { if (session.id === id) box.replaceChildren(textEl("p", `Could not load history: ${error.message}`)); }
+}
 function renderMoments() {
   const box = $("moments");
   box.replaceChildren();
@@ -265,6 +298,7 @@ async function selectSession(id) {
   }
   try {
     session = await api(`/api/sessions/${id}`);
+    savedProcedure = structuredClone(session.procedure);
     queuedItems = []; renderQueue();
     dirty = false;
     $("title").value = session.title;
@@ -282,6 +316,7 @@ async function selectSession(id) {
     renderObservations();
     renderQuestions();
     renderSteps();
+    await renderProcedureHistory();
     renderMoments();
     $("video").hidden = !session.media_url;
     $("videoEmpty").hidden = !!session.media_url;
@@ -406,14 +441,16 @@ async function save(revision = false) {
       notes: $("notes").value,
       answers,
       procedure: {
-        revision: (session.procedure?.revision || 1) + (revision || JSON.stringify(steps) !== JSON.stringify(session.procedure?.steps || [], (key, value) => value === null ? undefined : value) ? 1 : 0),
+        revision: savedProcedure.revision + (revision || JSON.stringify(steps) !== JSON.stringify(savedProcedure.steps, (key, value) => value === null ? undefined : value) ? 1 : 0),
         steps,
       },
     }),
   });
+  savedProcedure = structuredClone(session.procedure);
   $("revision").textContent = session.procedure.revision;
   dirty = false;
   await refresh();
+  await renderProcedureHistory();
   toast(revision ? "Teaching revision saved." : "Notes saved.");
   return session;
 }

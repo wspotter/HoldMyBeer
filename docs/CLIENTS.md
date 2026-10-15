@@ -55,6 +55,7 @@ Use [the teaching skill](../skills/teach-workflow/SKILL.md) as the task instruct
 
 - `hmb_list_sessions`: list recent local workflows.
 - `hmb_get_session`: read notes, answers, procedure and bounded recent trial summaries.
+- `hmb_procedure_history`: read an exact saved `revision`, or the latest 50 with `before_revision` pagination. This uses the same history as the teaching UI and cannot replace or execute a procedure. Reconnect an already running client to discover the new tool.
 - `hmb_recording_frames`: return up to six timestamped images, scaled within 1280 × 720, using bounded local decoding. MediaRecorder WebM without duration metadata is supported.
 - `hmb_propose_teaching`: save observations, questions and a validated procedure to the local proposal inbox. It cannot execute a procedure or replace the reviewed session.
 

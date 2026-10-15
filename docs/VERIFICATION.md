@@ -50,3 +50,9 @@ Visible workspace acceptance also verified a new filename, a caption-only reuse 
 - `node --check web/app.js`, `python3 -m compileall -q holdmybeer` and `git diff --check` passed.
 
 These are local plugin/UI and installed-package receipts. No live Hermes profile installation, agent execution tool, external website workflow or publishing is claimed. Decoder/browser dependencies are unchanged. Existing setuptools license-table and Starlette TestClient deprecation notices remain.
+
+## Unreleased first-use candidate — October 15, 2026
+
+Candidate code `24e481c` adds the packaged launcher/doctor and a guided fixture workflow. On sr730 the combined suite passed 55 tests with one existing Starlette/httpx deprecation warning; the final CLI subset passed 25 tests. JavaScript syntax and whitespace checks passed. A fresh virtual environment installed a locally built wheel outside the source tree, launched through its installed `holdmybeer --port 0 --data-dir ...` entrypoint, completed the guided real-Chromium trial, and verified fresh filename/caption/draft ID after reload without creating default storage. The installed wheel also passed retained screenshot and five-tool MCP/procedure-history checks.
+
+Browser tests cover dirty workflow preservation, explicit authorization, session switching, duplicate demo starts and simulated missing-browser/network failures. Actual success used the installed matching browser. Doctor checks executable availability and permissions, not all OS runtime libraries. The new UI/CLI are local unreleased changes; the existing public prerelease predates them. Native Hermes client installation, generalized websites, automatic analysis/self-repair and public adoption remain unverified. Independent artifacts and receipts are retained under `/home/stacy/review/staging/20261015/holdmybeer-engineering`; that local path is operator evidence, not a portable dependency.

@@ -237,8 +237,14 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     @app.get("/api/sessions")
     def list_sessions():
+        from .training import training_task_metadata
         with app.state.store.connect() as db:
-            return {"sessions": [app.state.store.get_session(r[0]) for r in db.execute("SELECT id FROM sessions ORDER BY rowid DESC")]}
+            sessions = []
+            for row in db.execute("SELECT id FROM sessions ORDER BY rowid DESC"):
+                data = app.state.store.get_session(row[0])
+                data['training_task'] = training_task_metadata(db, row[0])
+                sessions.append(data)
+            return {"sessions": sessions}
 
     @app.post("/api/sessions")
     def create_session(body: CreateSession):
@@ -249,7 +255,12 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         return data
 
     @app.get("/api/sessions/{session_id}")
-    def get_session(session_id: str): return app.state.store.get_session(session_id)
+    def get_session(session_id: str):
+        from .training import training_task_metadata
+        data = app.state.store.get_session(session_id)
+        with app.state.store.connect() as db:
+            data['training_task'] = training_task_metadata(db, session_id)
+        return data
 
     def procedure_history(session_id, revision=None, before_revision=None):
         with app.state.store.connect() as db:

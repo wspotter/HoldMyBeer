@@ -239,43 +239,41 @@ def training_router(store):
 
     def activate_locked(task_id: uuid.UUID, body: ActivateInput):
         tid = str(task_id)
-        with store.connect() as db:
-            task = get_task(db, tid)
-            if body.version != task["latest_version"]:
-                raise HTTPException(409, "only the latest version can become working")
-            row = db.execute("SELECT session_id FROM training_versions WHERE task_id=? AND version=?",
-                             (tid, body.version)).fetchone()
-            sid = row["session_id"]
-        session = store.get_session(sid)
-        proposal = latest_proposal(store.root, sid)
-        if proposal is None or proposal.get("questions"):
-            raise HTTPException(409, "current understanding proposal is not ready")
-        current_source = teaching_source(store.root, sid)
-        if any(proposal.get(k) != v for k, v in current_source.items()):
-            raise HTTPException(409, "understanding proposal is stale")
-        reviewed_procedure = Procedure.model_validate(proposal.get("procedure")).model_dump(exclude_none=True)
-        saved_procedure = Procedure.model_validate(session.get("procedure")).model_dump(exclude_none=True)
-        if reviewed_procedure != saved_procedure:
-            raise HTTPException(409, "saved procedure does not match the reviewed proposal")
-        receipt_path = store.artifacts / f"{sid}.{proposal['id']}.understanding.json"
-        try:
-            receipt = json.loads(receipt_path.read_text()) if not receipt_path.is_symlink() else {}
-        except (OSError, ValueError):
-            receipt = {}
-        if receipt.get("proposal_id") != proposal["id"] or receipt.get("consent") is not True or any(
-                receipt.get(k) != v for k, v in current_source.items()):
-            raise HTTPException(409, "current understanding has not been explicitly approved")
-        run = next((r for r in session.get("runs", []) if r.get("id") == str(body.run_id)), None)
-        if (not run or run.get("status") != "verified" or run.get("mode") != "procedure"
-                or run.get("revision") != reviewed_procedure.get("revision")
-                or not run.get("procedure")
-                or Procedure.model_validate(run["procedure"]).model_dump(exclude_none=True) != reviewed_procedure):
-            raise HTTPException(409, "matching verified procedure trial is required")
+        # The same write reservation used by proposal creation prevents a new
+        # proposal or task version from slipping between validation and promotion.
         with store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             task = get_task(db, tid)
-            if task["latest_version"] != body.version:
-                raise HTTPException(409, "task changed while activation was being checked")
+            if body.version != task["latest_version"] or task["working_version"] == body.version:
+                raise HTTPException(409, "only the latest unpromoted version can become working")
+            row = db.execute("SELECT session_id FROM training_versions WHERE task_id=? AND version=?",
+                             (tid, body.version)).fetchone()
+            sid = row["session_id"]
+            session = store.get_session(sid)
+            proposal = latest_proposal(store.root, sid)
+            if proposal is None or proposal.get("questions"):
+                raise HTTPException(409, "current understanding proposal is not ready")
+            current_source = teaching_source(store.root, sid)
+            if any(proposal.get(k) != v for k, v in current_source.items()):
+                raise HTTPException(409, "understanding proposal is stale")
+            reviewed_procedure = Procedure.model_validate(proposal.get("procedure")).model_dump(exclude_none=True)
+            saved_procedure = Procedure.model_validate(session.get("procedure")).model_dump(exclude_none=True)
+            if reviewed_procedure != saved_procedure:
+                raise HTTPException(409, "saved procedure does not match the reviewed proposal")
+            receipt_path = store.artifacts / f"{sid}.{proposal['id']}.understanding.json"
+            try:
+                receipt = json.loads(receipt_path.read_text()) if not receipt_path.is_symlink() else {}
+            except (OSError, ValueError):
+                receipt = {}
+            if receipt.get("proposal_id") != proposal["id"] or receipt.get("consent") is not True or any(
+                    receipt.get(k) != v for k, v in current_source.items()):
+                raise HTTPException(409, "current understanding has not been explicitly approved")
+            run = next((r for r in session.get("runs", []) if r.get("id") == str(body.run_id)), None)
+            if (not run or run.get("status") != "verified" or run.get("mode") != "procedure"
+                    or run.get("revision") != reviewed_procedure.get("revision")
+                    or not run.get("procedure")
+                    or Procedure.model_validate(run["procedure"]).model_dump(exclude_none=True) != reviewed_procedure):
+                raise HTTPException(409, "matching verified procedure trial is required")
             db.execute("UPDATE training_tasks SET working_version=? WHERE id=? AND latest_version=?",
                        (body.version, tid, body.version))
             if db.total_changes == 0:
@@ -302,3 +300,35 @@ def is_mutable_training_session(store, session_id: str) -> bool:
                           WHERE v.session_id=? AND (v.version<t.latest_version OR v.version=t.working_version)""",
                          (session_id,)).fetchone()
     return row is None
+
+
+def training_task_metadata(db, session_id: str) -> dict | None:
+    """Return explicit app/task/version ownership, or None for legacy sessions."""
+    tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if not {"training_apps", "training_tasks", "training_versions"}.issubset(tables):
+        return None
+    try:
+        row = db.execute("""SELECT a.id AS app_id, a.name AS app_name, t.id AS task_id,
+                                  t.name AS stored_task_name, t.latest_version, t.working_version,
+                                  v.version, latest.data AS latest_data
+                           FROM training_versions v
+                           JOIN training_tasks t ON t.id=v.task_id
+                           JOIN training_apps a ON a.id=t.app_id
+                           LEFT JOIN training_versions lv ON lv.task_id=t.id AND lv.version=t.latest_version
+                           LEFT JOIN sessions latest ON latest.id=lv.session_id
+                           WHERE v.session_id=?""", (session_id,)).fetchone()
+    except sqlite3.OperationalError:
+        # Partial/older installations may have a training table without the full schema.
+        return None
+    if row is None:
+        return None
+    name = row["stored_task_name"]
+    if row["latest_data"]:
+        try:
+            current = json.loads(row["latest_data"])
+            name = current.get("answers", {}).get("teaching_task_name") or current.get("title") or name
+        except (TypeError, ValueError, AttributeError):
+            pass
+    return {"app_id": row["app_id"], "app_name": row["app_name"], "task_id": row["task_id"],
+            "task_name": name, "version": row["version"], "latest_version": row["latest_version"],
+            "working_version": row["working_version"]}

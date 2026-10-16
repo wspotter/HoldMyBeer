@@ -4,7 +4,7 @@
   let running = false;
   let pendingAttempt = null;
   const status = message => { $("demoStatus").textContent = message; };
-  const views = ["home", "demo", "brief", "saved", "advanced"];
+  const views = ["home", "directed", "demo", "brief", "saved", "advanced"];
   function showView(name) {
     if (!views.includes(name)) return;
     if (recorder?.state === "recording") {
@@ -19,13 +19,14 @@
     }
     $(name + "View").querySelector("h1,h2")?.focus();
     if (name === "saved") loadSaved();
-    if (name === "advanced") workspaceReady.then(() => { if (!session) newSession(); });
   }
+  window.hmbShowView = showView;
   document.querySelectorAll("[data-view]").forEach(button => {
     button.addEventListener("click", () => showView(button.dataset.view));
   });
   $("demoBegin").onclick = () => showView("demo");
   $("openBrief").onclick = () => showView("brief");
+  $("directedBegin").onclick = () => { showView("directed"); document.dispatchEvent(new CustomEvent("hmb-new-directed")); };
   const consent = () => { $("demoRun").disabled = running || !!pendingAttempt || !$("demoConsent").checked; };
   $("demoConsent").onchange = () => {
     consent();
@@ -146,50 +147,59 @@
     finally { $("demoCheck").disabled = false; }
   }
   $("demoCheck").onclick = checkSavedAttempt;
+  async function appendLegacySaved(list) {
+    const data = await api("/api/sessions");
+    const sessions = (data.sessions || []).filter(item => !item.training_task);
+    if (!sessions.length) return 0;
+    list.append(textEl("h2", "Other saved work"));
+    for (const item of sessions) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "saved-task";
+      button.append(textEl("strong", item.title));
+      const last = item.runs?.at(-1);
+      button.append(textEl("span", last?.status === "verified" ? "Draft saved · View result" : item.title.startsWith("GitHub report ·") ? "View report history" : "Open task"));
+      button.onclick = async () => {
+        try {
+          if (item.title === "Practice · Save a draft") {
+            if (pendingAttempt?.sessionId === item.id) { showView("demo"); await checkSavedAttempt(); return; }
+            demoSession = await api(`/api/sessions/${item.id}`);
+            $("demoConsent").checked = false;
+            consent();
+            showView("demo");
+            const recent = demoSession.runs?.at(-1);
+            $("demoForm").hidden = false;
+            $("demoResult").hidden = true;
+            if (recent?.status === "verified" && recent.draft_id) showDraft(recent);
+            else status("Check the steps and give permission to try this task.");
+          } else if (item.title.startsWith("GitHub report ·")) {
+            showView("brief");
+            document.dispatchEvent(new CustomEvent("hmb-open-brief", {detail: item.id}));
+          } else {
+            showView("advanced");
+            await selectSession(item.id);
+          }
+        } catch (error) { $("savedStatus").textContent = error.message; toast(error.message); }
+      };
+      list.append(button);
+      if (item.title !== "Practice · Save a draft" && !item.title.startsWith("GitHub report ·")) {
+        const reports = textEl("button", "Find GitHub reports in this older task", "back-link");
+        reports.type = "button";
+        reports.onclick = () => { showView("brief"); document.dispatchEvent(new CustomEvent("hmb-open-brief", {detail: item.id})); };
+        list.append(reports);
+      }
+    }
+    return sessions.length;
+  }
+  window.hmbAppendLegacySaved = appendLegacySaved;
   async function loadSaved() {
+    if (window.hmbLoadTrainingSaved) { await window.hmbLoadTrainingSaved(); return; }
     $("savedStatus").textContent = "Loading saved tasks…";
     const list = $("savedList");
     list.replaceChildren();
     try {
-      const data = await api("/api/sessions");
-      $("savedStatus").textContent = data.sessions.length ? "Choose a task to see its details or results." : "No saved tasks yet. Start with the practice example.";
-      for (const item of data.sessions) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "saved-task";
-        button.append(textEl("strong", item.title));
-        const last = item.runs?.at(-1);
-        button.append(textEl("span", last?.status === "verified" ? "Draft saved · View result" : item.title.startsWith("GitHub report ·") ? "View report history" : "Open task"));
-        button.onclick = async () => {
-          try {
-            if (item.title === "Practice · Save a draft") {
-              if (pendingAttempt?.sessionId === item.id) { showView("demo"); await checkSavedAttempt(); return; }
-              demoSession = await api(`/api/sessions/${item.id}`);
-              $("demoConsent").checked = false;
-              consent();
-              showView("demo");
-              const recent = demoSession.runs?.at(-1);
-              $("demoForm").hidden = false;
-              $("demoResult").hidden = true;
-              if (recent?.status === "verified" && recent.draft_id) showDraft(recent);
-              else status("Check the steps and give permission to try this task.");
-            } else if (item.title.startsWith("GitHub report ·")) {
-              showView("brief");
-              document.dispatchEvent(new CustomEvent("hmb-open-brief", {detail: item.id}));
-            } else {
-              showView("advanced");
-              await selectSession(item.id);
-            }
-          } catch (error) { $("savedStatus").textContent = error.message; toast(error.message); }
-        };
-        list.append(button);
-        if (item.title !== "Practice · Save a draft" && !item.title.startsWith("GitHub report ·")) {
-          const reports = textEl("button", "Find GitHub reports in this older task", "back-link");
-          reports.type = "button";
-          reports.onclick = () => { showView("brief"); document.dispatchEvent(new CustomEvent("hmb-open-brief", {detail: item.id})); };
-          list.append(reports);
-        }
-      }
+      const count = await appendLegacySaved(list);
+      $("savedStatus").textContent = count ? "Choose a task to see its details or results." : "No saved tasks yet. Show me one task to get started.";
     } catch (error) { $("savedStatus").textContent = `Could not load saved tasks. ${error.message}`; }
   }
 })();

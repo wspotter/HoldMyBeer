@@ -52,6 +52,45 @@ def test_sessions_persist_and_unknown_ids_are_rejected(server):
     assert httpx.put(base + f"/api/sessions/{created['id']}", json={"procedure": good_procedure}).status_code == 200
 
 
+def test_legacy_show_me_title_is_not_inferred_as_training_task(server):
+    base, _ = server
+    app = httpx.post(base + "/api/training/apps", json={"name": "Mail"}).json()
+    task = httpx.post(base + f"/api/training/apps/{app['id']}/tasks", json={
+        "name": "Save a message", "description": "Save the requested message", "done": "It appears in drafts",
+    }).json()
+    legacy = httpx.post(base + "/api/sessions", json={"title": "Show me · legacy personal workflow"}).json()
+    sessions = {item["id"]: item for item in httpx.get(base + "/api/sessions").json()["sessions"]}
+    assert sessions[task["session"]["id"]]["training_task"]["task_id"] == task["id"]
+    assert sessions[legacy["id"]]["training_task"] is None
+
+
+def test_saved_github_report_remains_openable_from_other_saved_work(server):
+    from playwright.sync_api import sync_playwright, expect
+
+    base, _ = server
+    legacy = httpx.post(base + "/api/sessions", json={"title": "GitHub report · wspotter/HoldMyBeer"}).json()
+    job = httpx.post(base + "/api/issue-briefs", json={
+        "session_id": legacy["id"], "repository": "wspotter/HoldMyBeer", "keyword": "video", "limit": 3,
+    })
+    assert job.status_code == 200, job.text
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.goto(base)
+            page.get_by_role("button", name="Saved tasks", exact=True).click()
+            expect(page.locator("#savedList")).to_contain_text("Other saved work")
+            saved_report = page.locator("#savedList .saved-task").filter(has_text="GitHub report · wspotter/HoldMyBeer")
+            expect(saved_report).to_be_visible()
+            expect(saved_report).to_contain_text("View report history")
+            saved_report.click()
+            expect(page.locator("#briefView")).to_be_visible()
+            expect(page.locator("#briefResult")).to_contain_text("wspotter/HoldMyBeer · video · awaiting approval")
+            assert httpx.get(base + f"/api/issue-briefs/{job.json()['id']}").json()["status"] == "awaiting_approval"
+        finally:
+            browser.close()
+
+
 def test_browser_saves_changed_steps_as_new_revision_and_preserves_conflicting_edits(server):
     from playwright.sync_api import sync_playwright, expect
 
@@ -62,6 +101,8 @@ def test_browser_saves_changed_steps_as_new_revision_and_preserves_conflicting_e
             page = browser.new_page()
             page.goto(base)
             page.get_by_role("button", name="Advanced", exact=True).click()
+            assert httpx.get(base + "/api/sessions").json()["sessions"] == []
+            page.get_by_role("button", name="New workflow").click()
             expect(page.locator("#sessions button.selected")).to_be_visible()
             page.locator('[data-tab="teach"]').click()
             page.locator('#loadPractice').click()
@@ -392,10 +433,11 @@ def test_compact_first_use_requires_fresh_consent_and_retains_readable_result(se
         try:
             page = browser.new_page()
             page.goto(base)
-            expect(page.get_by_role("button", name="Try the example", exact=True)).to_be_visible()
+            expect(page.locator("#demoBegin")).to_be_hidden()
             expect(page.locator("#advancedView")).to_be_hidden()
             assert httpx.get(base + "/api/sessions").json()["sessions"] == []
-            page.get_by_role("button", name="Try the example", exact=True).click()
+            page.get_by_role("button", name="Advanced", exact=True).click()
+            page.locator("#demoBegin").click()
             expect(page.locator("#demoRun")).to_be_disabled()
             page.locator("#demoConsent").check()
             page.locator("#demoCaption").fill("Fresh details from a first-time user")
@@ -434,5 +476,16 @@ def test_compact_first_use_requires_fresh_consent_and_retains_readable_result(se
             latest = httpx.get(base + "/api/sessions").json()["sessions"][0]
             assert len(latest["runs"]) == 2
             assert latest["runs"][-1]["status"] == "verified"
+
+            legacy = httpx.post(base + "/api/sessions", json={"title": "Show me · my older task"}).json()
+            page.reload()
+            page.get_by_role("button", name="Saved tasks", exact=True).click()
+            expect(page.locator("#savedList")).to_contain_text("Other saved work")
+            older = page.locator("#savedList .saved-task").filter(has_text="Show me · my older task")
+            expect(older).to_be_visible()
+            older.click()
+            expect(page.locator("#advancedView")).to_be_visible()
+            expect(page.locator("#title")).to_have_value("Show me · my older task")
+            assert httpx.get(base + f"/api/sessions/{legacy['id']}").status_code == 200
         finally:
             browser.close()

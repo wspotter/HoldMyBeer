@@ -34,9 +34,48 @@ def test_session_tools_read_from_local_store(recording_store):
     _, sid, _ = recording_store
     listing = hmb_list_sessions()
     assert listing["sessions"][0]["id"] == sid
-    assert hmb_get_session(sid)["notes"] == "untrusted"
+    assert listing["sessions"][0]["training_task"] is None
+    session = hmb_get_session(sid)
+    assert session["notes"] == "untrusted"
+    assert session["training_task"] is None
     with pytest.raises(ValueError, match="session not found"):
         hmb_get_session(str(uuid.uuid4()))
+
+
+def test_session_tools_identify_same_named_tasks_by_app_and_version(recording_store):
+    root, legacy_sid, _ = recording_store
+    from fastapi.testclient import TestClient
+    from holdmybeer.app import create_app
+
+    client = TestClient(create_app(root))
+    app_a = client.post("/api/training/apps", json={"name": "Alpha"}).json()
+    app_b = client.post("/api/training/apps", json={"name": "Beta"}).json()
+    body = {"name": "Same task", "description": "Save the requested item", "done": "Receipt matches"}
+    task_a = client.post(f"/api/training/apps/{app_a['id']}/tasks", json=body).json()
+    task_b = client.post(f"/api/training/apps/{app_b['id']}/tasks", json=body).json()
+    v1_a = task_a["session"]["id"]
+    v1_b = task_b["session"]["id"]
+    edited = client.post(f"/api/training/tasks/{task_a['id']}/edit", json={"base_version": 1}).json()
+    v2_a = edited["session"]["id"]
+    latest_answers = {**edited["session"]["answers"], "teaching_task_name": "Renamed task"}
+    assert client.put(f"/api/sessions/{v2_a}", json={"title": "Renamed task", "answers": latest_answers}).status_code == 200
+
+    listing = {item["id"]: item for item in hmb_list_sessions()["sessions"]}
+    first_version = listing[v1_a]["training_task"]
+    second_task = listing[v1_b]["training_task"]
+    latest_version = hmb_get_session(v2_a)["training_task"]
+    assert first_version == {"app_id": app_a["id"], "app_name": "Alpha", "task_id": task_a["id"],
+                             "task_name": "Renamed task", "version": 1, "latest_version": 2,
+                             "working_version": None}
+    assert second_task["app_id"] == app_b["id"]
+    assert second_task["app_name"] == "Beta"
+    assert second_task["task_id"] == task_b["id"]
+    assert second_task["task_name"] == "Same task"
+    assert second_task["version"] == second_task["latest_version"] == 1
+    assert latest_version == {"app_id": app_a["id"], "app_name": "Alpha", "task_id": task_a["id"],
+                              "task_name": "Renamed task", "version": 2, "latest_version": 2,
+                              "working_version": None}
+    assert hmb_get_session(legacy_sid)["training_task"] is None
 
 
 def test_frame_tool_extracts_png_at_bounded_dimensions(recording_store):

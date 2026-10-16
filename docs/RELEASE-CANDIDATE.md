@@ -1,6 +1,6 @@
-# 0.3.0a2: unpublished local release candidate
+# 0.3.0a3: unpublished local release candidate
 
-This candidate adds a compact first-use interface, an opt-in Hermes MCP installer and a human-approved, read-only public GitHub issue brief. It includes the launcher/doctor and guided fixture practice from the earlier engineering candidate. No public release or production deployment has occurred.
+The current local candidate organizes training as app → task → version. Choose or create an app and task, describe the task and done check, then record or import one complete example. Each version has a separate session and one primary recording. Edit task and restore create a new draft; the prior working version remains available. Historical and working sessions are protected from ordinary changes. No public release or production deployment has occurred.
 
 ## Install and use
 
@@ -8,13 +8,13 @@ Obtain the reviewed wheel and its SHA-256 from the retained release checkpoint. 
 
 ```sh
 python3 -m venv /absolute/path/to/hmb-env
-/absolute/path/to/hmb-env/bin/python -m pip install /absolute/path/to/holdmybeer-0.3.0a2-py3-none-any.whl
+/absolute/path/to/hmb-env/bin/python -m pip install /absolute/path/to/holdmybeer-0.3.0a3-py3-none-any.whl
 /absolute/path/to/hmb-env/bin/python -m playwright install chromium
 /absolute/path/to/hmb-env/bin/holdmybeer doctor
 /absolute/path/to/hmb-env/bin/holdmybeer --data-dir /absolute/private/path/to/hmb-data
 ```
 
-Open the printed HTTP loopback URL, create or select a workflow, then follow [the issue-brief instructions](ISSUE-BRIEF.md). `doctor` gives recovery commands for missing dependencies; it does not install them or guarantee that every operating-system browser library is available. Frame inspection additionally needs FFmpeg/ffprobe. Use [client setup](CLIENTS.md) for the explicit isolated Hermes connection; a client restart is required to discover new tools.
+Open the printed HTTP loopback URL and choose “I’ll show you”. Choose or create the app and task, describe the completion check, then record or import one complete example. Edit task starts a new version; restore copies the selected earlier version into a new draft without its approval or trial proof. A connected assistant must explicitly inspect the recording and propose its understanding through MCP; automatic review dispatch is not connected. Approval confirms understanding only. Generic replay of recordings is unavailable. A version can be marked working only with current approved understanding and a matching retained verified procedure-mode trial; current support is limited to the local fixture. For the separate fixed GitHub example, open Advanced and follow [the issue-brief instructions](ISSUE-BRIEF.md). `doctor` gives recovery commands for missing dependencies; it does not install them or guarantee that every operating-system browser library is available. Frame inspection additionally needs FFmpeg/ffprobe. Use [client setup](CLIENTS.md) for the explicit isolated Hermes connection; a client restart is required to discover new tools.
 
 ## Recovery and removal
 
@@ -27,9 +27,9 @@ Open the printed HTTP loopback URL, create or select a workflow, then follow [th
 
 ## Verification and limits
 
-The October 16 candidate passed 90 tests, a separately installed wheel/browser/MCP smoke check, native Hermes v0.22 proposal and approved-execution calls, and two live GitHub searches with distinct results and retained reports. Duplicate starts returned the same receipts. Source review and fixes were supervised by Codex with bounded Luna assistance; Ollie's native CQ/Hermes review is retained externally, including its initial contradictory verdict and clarification. These are supervised acceptance checks, not independent pilot-user evidence.
+Earlier October 16 acceptance covered the prior candidate and included source tests, an installed-wheel/browser/MCP smoke, native Hermes v0.22 issue-brief calls, and retained GitHub search reports. That evidence does not verify the current app/task/version addition. A fresh installed-wheel smoke from outside the checkout now verifies the packaged `training.js`, two independent tasks, edit/history with retained-media preservation, the reviewed Chromium fixture, and the MCP history handshake. The source suite passed 107 tests. App/task browser checks cover separate tasks, import and review, approval without execution, read-only playback, edit/history restore, and preserved legacy practice and GitHub results. Retained versions also have a separate read-only view.
 
-The named procedure reads visible issue titles and links; it does not prioritize or resolve issues, compile an arbitrary recording, sign in, write to GitHub, post socially, or guarantee exhaustive repository coverage. Browser cancellation is cooperative. Independent pilot users, other platforms, Hermes recording interpretation and the general teaching compiler remain open work.
+The named GitHub procedure reads visible issue titles and links; it does not prioritize or resolve issues, compile an arbitrary recording, sign in, write to GitHub, post socially, or guarantee exhaustive repository coverage. A fixture-only working marker does not enable arbitrary replay. Independent pilot users, other platforms, automatic assistant review dispatch, Hermes recording interpretation and a general recorded-task compiler remain open work.
 
 ## Promotion draft — founder review required
 

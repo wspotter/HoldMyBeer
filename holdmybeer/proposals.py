@@ -184,27 +184,60 @@ def latest_proposal(root: Path, session_id: str) -> dict[str, Any] | None:
 def create_proposal(root: Path, session_id: str, observations: list[dict], questions: list[dict], procedure: dict) -> dict[str, Any]:
     """Atomically write one review-only proposal beside the session's local artifacts."""
     proposal = _proposal_from_input(session_id, observations, questions, procedure)
-    if not _session_exists(root, proposal.session_id):
+    db_path = root.resolve() / "holdmybeer.sqlite3"
+    if not db_path.is_file():
         raise ValueError("session not found")
-    proposal = proposal.model_copy(update=teaching_source(root, proposal.session_id))
-    artifacts = (root.resolve() / "artifacts").resolve()
-    artifacts.mkdir(parents=True, exist_ok=True, mode=0o700)
-    target = artifacts / f"{proposal.session_id}.{proposal.id}.proposal.json"
-    payload = (proposal.model_dump_json() + "\n").encode("utf-8")
-    fd, temp_name = tempfile.mkstemp(prefix=".proposal-", suffix=".tmp", dir=artifacts)
-    temp = Path(temp_name)
+    # Proposal creation and activation serialize through the same SQLite write
+    # reservation, including the ownership/freeze check and source snapshot.
+    db = sqlite3.connect(db_path, timeout=10)
+    db.row_factory = sqlite3.Row
     try:
+        db.execute("BEGIN IMMEDIATE")
+        if db.execute("SELECT 1 FROM sessions WHERE id=?", (proposal.session_id,)).fetchone() is None:
+            raise ValueError("session not found")
+        # Import here to avoid the training -> proposals import cycle.
+        from .training import training_task_metadata
+        metadata = training_task_metadata(db, proposal.session_id)
+        if metadata is not None and not _is_mutable_training_session_db(db, proposal.session_id):
+            raise ValueError("This task version is frozen. Use Edit task to continue teaching it.")
+        proposal = proposal.model_copy(update=teaching_source(root, proposal.session_id))
+        artifacts = (root.resolve() / "artifacts").resolve()
+        artifacts.mkdir(parents=True, exist_ok=True, mode=0o700)
+        target = artifacts / f"{proposal.session_id}.{proposal.id}.proposal.json"
+        payload = (proposal.model_dump_json() + "\n").encode("utf-8")
+        fd, temp_name = tempfile.mkstemp(prefix=".proposal-", suffix=".tmp", dir=artifacts)
+        temp = Path(temp_name)
+        created = False
         with os.fdopen(fd, "wb") as out:
             out.write(payload)
             out.flush()
             os.fsync(out.fileno())
         # Hard-link creation is atomic and fails if the destination already exists.
         os.link(temp, target, follow_symlinks=False)
+        created = True
         directory_fd = os.open(artifacts, os.O_RDONLY)
         try:
             os.fsync(directory_fd)
         finally:
             os.close(directory_fd)
+        db.commit()
+    except Exception:
+        db.rollback()
+        if "created" in locals() and created:
+            target.unlink(missing_ok=True)
+        raise
     finally:
-        temp.unlink(missing_ok=True)
+        if "temp" in locals():
+            temp.unlink(missing_ok=True)
+        db.close()
     return proposal.model_dump(mode="json")
+
+
+def _is_mutable_training_session_db(db: sqlite3.Connection, session_id: str) -> bool:
+    tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if not {"training_versions", "training_tasks"}.issubset(tables):
+        return True
+    row = db.execute("""SELECT 1 FROM training_versions v JOIN training_tasks t ON t.id=v.task_id
+                      WHERE v.session_id=? AND (v.version<t.latest_version OR v.version=t.working_version)""",
+                     (session_id,)).fetchone()
+    return row is None

@@ -20,17 +20,90 @@
       <section id="homeView" class="simple-view" aria-labelledby="welcomeTitle">
         <p class="eyebrow">SMALL TASKS. A LITTLE LESS REPETITION.</p>
         <h1 id="welcomeTitle" tabindex="-1">Teach an assistant<br />your repeat tasks.</h1>
-        <p class="welcome-copy">Show what you do. Check the steps. Let it try.</p>
-        <p class="preview-note">Early preview: start with a ready-made task.<br />Teaching new tasks from recordings is still experimental.</p>
-        <section class="first-task" aria-labelledby="firstTaskTitle">
-          <span class="task-label">NEW HERE? START WITH THIS</span>
-          <h2 id="firstTaskTitle">Let it save a practice draft.</h2>
-          <p>Choose a file name and a caption. HoldMyBeer fills them in, saves a draft, and shows you the result.</p>
-          <button class="primary" id="demoBegin" type="button">Try the example</button>
-          <small>About a minute · Stays on this computer · Nothing gets posted</small>
+        <p class="welcome-copy">Teach an assistant one task at a time. Each app keeps its own tasks, recordings, and reviewed versions.</p>
+        <section class="first-task" aria-labelledby="directedTitle">
+          <span class="task-label">START WITH YOUR TASK</span>
+          <h2 id="directedTitle">What should I learn?</h2>
+          <p>Choose an app, name a task, describe what “done” looks like, then record one complete example.</p>
+          <button class="primary" id="directedBegin" type="button">I’ll show you</button>
+          <small>Preview: recordings are saved; assistant review needs a connected agent. Repeating your task is not available yet. Approval confirms understanding only.</small>
         </section>
-        <button class="task-link" id="openBrief" type="button"><span><strong>Already use GitHub?</strong><br />Collect a short list of a project’s open issues.</span><span aria-hidden="true">→</span></button>
-        <p class="simple-footnote">No account or AI setup needed for these examples.</p>
+        <p class="simple-footnote">Your recording stays in this local workspace.</p>
+      </section>
+      <section id="directedView" class="simple-view" aria-labelledby="directedHeading" hidden>
+        <button class="back-link" type="button" data-view="home">← Start</button>
+        <p class="eyebrow">APP → TASK → EXAMPLE</p>
+        <h1 id="directedHeading" tabindex="-1">Teach one task.</h1>
+        <section id="trainingAppStage" class="task-surface" aria-labelledby="trainingAppTitle">
+          <h2 id="trainingAppTitle" tabindex="-1">1. Choose an app</h2>
+          <label for="trainingAppSelect">App</label><select id="trainingAppSelect"></select>
+          <button id="trainingAppContinue" class="primary" type="button">Continue to tasks</button>
+          <button id="trainingAppCreateToggle" class="quiet" type="button">Create an app</button>
+          <form id="trainingAppCreateForm" hidden>
+            <label for="trainingAppName">New app name</label><input id="trainingAppName" maxlength="100" required />
+            <button class="primary" type="submit">Save app</button>
+          </form>
+          <p id="trainingAppStatus" class="task-status" role="status" aria-live="polite"></p>
+        </section>
+        <section id="trainingTaskStage" class="task-surface" aria-labelledby="trainingTaskTitle" hidden>
+          <button id="trainingBackToApps" class="back-link" type="button">← Apps</button>
+          <h2 id="trainingTaskTitle" tabindex="-1">2. Choose a task</h2>
+          <p id="trainingAppNameSummary" class="compact-copy"></p>
+          <div id="trainingTasks" class="training-task-list"></div>
+          <button id="trainingTaskContinue" class="primary" type="button" disabled>Continue to task details</button>
+          <button id="trainingTaskCreateToggle" class="quiet" type="button">Create a task</button>
+          <form id="trainingTaskCreateForm" hidden>
+            <label for="trainingTaskName">Task name</label><input id="trainingTaskName" maxlength="160" required />
+            <label for="trainingTaskDescription">What should the assistant do?</label><textarea id="trainingTaskDescription" maxlength="2000" required></textarea>
+            <label for="trainingTaskDone">How will you know it is done?</label><textarea id="trainingTaskDone" maxlength="1000" required></textarea>
+            <button class="primary" type="submit">Save task</button>
+          </form>
+          <p id="trainingTaskStatus" class="task-status" role="status" aria-live="polite"></p>
+        </section>
+        <section id="trainingDescriptionStage" class="task-surface" aria-labelledby="trainingDescriptionTitle" hidden>
+          <button id="trainingBackToTasks" class="back-link" type="button">← Tasks</button>
+          <h2 id="trainingDescriptionTitle" tabindex="-1">3. Task details</h2>
+          <p id="trainingDescriptionText" class="compact-copy"></p>
+          <dl id="trainingVersionInfo" class="training-version-info"></dl>
+          <div class="training-version-actions">
+            <button id="trainingEdit" class="quiet" type="button">Edit task · new version</button>
+            <label for="trainingHistory">Earlier versions</label><select id="trainingHistory"></select>
+            <button id="trainingViewVersion" class="quiet" type="button" disabled>View selected version</button>
+            <button id="trainingRestore" class="quiet" type="button" disabled>Restore selected version</button>
+          </div>
+          <form id="trainingEditForm" hidden>
+            <label for="trainingEditName">Task name</label><input id="trainingEditName" maxlength="160" required />
+            <label for="trainingEditGoal">What should the assistant do?</label><textarea id="trainingEditGoal" maxlength="2000" required></textarea>
+            <label for="trainingEditDone">How will you know it is done?</label><textarea id="trainingEditDone" maxlength="1000" required></textarea>
+            <button class="primary" type="submit">Save new version</button><button id="trainingEditCancel" class="quiet" type="button">Cancel edit</button>
+          </form>
+          <button id="trainingRecordContinue" class="primary" type="button">Continue to recording</button>
+          <p id="trainingDescriptionStatus" class="task-status" role="status" aria-live="polite"></p>
+        </section>
+        <form id="directedForm" class="task-surface" hidden>
+          <section id="directedDescribeStage" aria-labelledby="directedDescribeTitle" hidden><h2 id="directedDescribeTitle">Task details</h2><input id="directedGoal" type="hidden" /><input id="directedDone" type="hidden" /></section>
+          <section id="directedRecordStage" aria-labelledby="directedRecordTitle" hidden>
+            <button class="back-link" id="directedEditDetails" type="button">← Current task details</button>
+            <h2 id="directedRecordTitle" tabindex="-1">4. Show one complete example</h2>
+            <p id="directedTaskSummary" class="compact-copy"></p>
+            <p id="directedVersionSummary" class="task-status"></p>
+            <div class="directed-recording">
+              <p class="compact-copy">Choose the app window or tab and perform the whole task. Review the saved video before continuing.</p>
+              <div class="directed-actions">
+                <button class="primary" id="directedRecord" type="button">Record screen</button>
+                <button class="quiet" id="directedStop" type="button" hidden>Done showing</button>
+                <label id="directedImportLabel" class="file-button directed-import"><span>Import video</span><input id="directedImport" type="file" accept="video/webm,video/mp4" /></label>
+              </div>
+              <p id="directedReplacementNote" class="task-status" hidden>This replaces the video in this draft. To keep the current example, create a new version from Task details first.</p>
+              <button id="directedRetryUpload" class="quiet" type="button" hidden>Retry saving this video</button>
+              <video id="directedVideo" controls playsinline hidden></video>
+            </div>
+            <label class="check"><input id="directedComplete" type="checkbox" /> This video shows one complete example of the task.</label>
+            <button id="directedReview" class="primary" type="button" disabled>Review understanding</button>
+          </section>
+        </form>
+        <p id="directedStatus" class="task-status" role="status" aria-live="polite">Describe the task and its done condition.</p>
+        <section id="directedReviewPanel" class="task-surface" hidden aria-live="polite" aria-labelledby="directedReviewTitle"></section>
       </section>
       <section id="demoView" class="simple-view" aria-labelledby="demoTitle" hidden>
         <button class="back-link" type="button" data-view="home">← All tasks</button>
@@ -102,7 +175,7 @@
         </div>
       </aside>
       <main>
-        <div class="advanced-intro"><p class="eyebrow">ADVANCED · EXPERIMENTAL</p><h2>Record and review a task</h2><p>Capture what you do and review it with a connected AI assistant. A recording does not turn into a runnable task automatically.</p><button class="quiet" id="guidedStart" type="button">Open the detailed practice walkthrough</button></div>
+        <div class="advanced-intro"><p class="eyebrow">ADVANCED · EXPERIMENTAL</p><h2>Record and review a task</h2><p>Capture what you do and review it with a connected AI assistant. A recording does not turn into a runnable task automatically.</p><button class="quiet" id="guidedStart" type="button">Open the detailed practice walkthrough</button><div class="advanced-example-links"><button class="quiet" id="demoBegin" type="button">Practice draft example</button><button class="quiet" id="openBrief" type="button">GitHub issues example</button></div></div>
         <section id="guidedDemo" class="guided-demo" aria-labelledby="guidedTitle" hidden>
           <p class="eyebrow">FIXTURE-ONLY FIRST USE</p>
           <h2 id="guidedTitle">A new practice workflow, kept separate.</h2>
@@ -333,6 +406,8 @@ A fresh example, prepared for review.</textarea
     <div id="toast" role="status" aria-live="polite"></div>
     <script src="/app.js"></script>
     <script src="/simple.js"></script>
+    <script src="/training.js"></script>
+    <script src="/directed.js"></script>
     <script src="/briefs.js"></script>
   </body>
 </html>

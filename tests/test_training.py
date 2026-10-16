@@ -172,6 +172,10 @@ def test_activation_requires_current_approved_understanding_and_matching_proof(c
     assert activated.json()["working_version"] == 1
     assert activated.json()["activation"]["capability"] == "supported_fixture_only"
     assert is_mutable_training_session(client.app.state.store, sid) is False
+    with pytest.raises(ValueError, match="Edit task"):
+        create_proposal(client.app.state.store.root, sid,
+                        [{"timestamp": 3, "text": "A later proposal must not rewrite the working version."}],
+                        [], procedure)
     assert client.put(f"/api/sessions/{sid}", json={"notes": "working version is locked"}).status_code == 409
     assert client.post(f"/api/sessions/{sid}/media", content=b"replacement",
                        headers={"content-type": "video/webm"}).status_code == 409
@@ -181,8 +185,35 @@ def test_activation_requires_current_approved_understanding_and_matching_proof(c
     assert next_value["latest_version"] == 2
     assert next_value["working_version"] == 1
     next_sid = next_value["session"]["id"]
+    with pytest.raises(ValueError, match="Edit task"):
+        create_proposal(client.app.state.store.root, sid,
+                        [{"timestamp": 4, "text": "Historical version stays frozen."}], [], procedure)
+    new_draft_proposal = create_proposal(client.app.state.store.root, next_sid,
+                                         [{"timestamp": 5, "text": "The new draft can be taught."}], [], procedure)
+    assert new_draft_proposal["session_id"] == next_sid
     assert is_mutable_training_session(client.app.state.store, sid) is False
     assert is_mutable_training_session(client.app.state.store, next_sid) is True
     assert client.put(f"/api/sessions/{next_sid}", json={"notes": "new draft remains editable"}).status_code == 200
+    next_answers = client.get(f"/api/sessions/{next_sid}").json()["answers"]
+    next_answers["teaching_recording_confirmed"] = "yes"
+    assert client.put(f"/api/sessions/{next_sid}", json={"answers": next_answers}).status_code == 200
+    next_proposal = create_proposal(client.app.state.store.root, next_sid,
+                                    [{"timestamp": 6, "text": "The edited version retains its own review."}],
+                                    [], procedure)
+    assert client.post(f"/api/sessions/{next_sid}/teaching-review/approve",
+                       json={"proposal_id": next_proposal["id"], "consent": True}).status_code == 200
+    next_run_id = "30000000-0000-4000-8000-000000000000"
+    client.app.state.store.save_run(next_sid, {"id": next_run_id, "status": "verified", "mode": "procedure",
+                                               "revision": procedure["revision"], "procedure": procedure})
+    promoted = client.post(f"/api/training/tasks/{task['id']}/activate",
+                           json={"version": 2, "run_id": next_run_id})
+    assert promoted.status_code == 200, promoted.text
+    assert promoted.json()["working_version"] == 2
+    assert (client.app.state.store.artifacts / f"{sid}.webm").read_bytes() == b"recording"
+    assert is_mutable_training_session(client.app.state.store, sid) is False
+    assert is_mutable_training_session(client.app.state.store, next_sid) is False
+    with pytest.raises(ValueError, match="Edit task"):
+        create_proposal(client.app.state.store.root, next_sid,
+                        [{"timestamp": 7, "text": "Promoted version is frozen too."}], [], procedure)
     assert client.get(f"/api/training/tasks/{task['id']}").status_code == 200
 

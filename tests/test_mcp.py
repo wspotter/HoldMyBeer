@@ -174,6 +174,24 @@ def test_stdio_mcp_lists_tools_and_returns_image_content(recording_store):
                     "hmb_list_sessions", "hmb_get_session", "hmb_recording_frames", "hmb_propose_teaching", "hmb_procedure_history",
                     "hmb_propose_issue_brief", "hmb_execute_approved_brief", "hmb_get_issue_brief"
                 }
+                proposal_schema = next(tool.inputSchema for tool in tools.tools
+                                       if tool.name == "hmb_propose_teaching")
+
+                def resolve(schema):
+                    while "$ref" in schema:
+                        schema = proposal_schema["$defs"][schema["$ref"].rsplit("/", 1)[-1]]
+                    return schema
+
+                properties = proposal_schema["properties"]
+                observation = resolve(properties["observations"]["items"])
+                question = resolve(properties["questions"]["items"])
+                procedure = resolve(properties["procedure"])
+                step = resolve(procedure["properties"]["steps"]["items"])
+                assert {"timestamp", "text"} <= set(observation["properties"])
+                assert {"timestamp", "text"} <= set(observation["required"])
+                assert {"id", "question"} <= set(question["required"])
+                assert {"revision", "steps"} <= set(procedure["required"])
+                assert {"goal", "check", "action"} <= set(step["properties"])
                 annotations = {tool.name: tool.annotations for tool in tools.tools}
                 assert annotations["hmb_recording_frames"].readOnlyHint is True
                 assert annotations["hmb_procedure_history"].readOnlyHint is True

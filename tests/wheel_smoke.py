@@ -36,7 +36,7 @@ def main():
                     time.sleep(.03)
             else:
                 raise RuntimeError("wheel server did not start")
-            for path in ("/", "/app.js", "/style.css", "/fixture"):
+            for path in ("/", "/app.js", "/simple.js", "/briefs.js", "/style.css", "/fixture"):
                 assert httpx.get(base + path).status_code == 200, path
             session = httpx.post(base + "/api/sessions", json={"title": "Installed wheel check"}).json()
             steps = [

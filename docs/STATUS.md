@@ -1,6 +1,10 @@
 # Implementation checkpoint
 
-## October 16 release candidate
+## October 16 compact interface candidate
+
+Unpublished `0.3.0a2` replaces the initial workshop with Start, Saved tasks and Advanced screens. New users can try one isolated, explicitly authorized practice task without recording or AI setup. Plans and results are readable; technical data is collapsed. Opening the app creates no empty task. The existing recording tools and detailed walkthrough remain under Advanced. The GitHub issue report keeps its server approval gates and exposes saved history. This is an interface improvement; broad recording-derived execution and independent usability pilots remain incomplete.
+
+## Earlier October 16 release candidate
 
 Unpublished `0.3.0a1` adds a named read-only public GitHub issue brief with immutable target/input/revision approval, cooperative cancellation, duplicate-start protection and retained JSON/screenshot output. It is not a recording-to-arbitrary-app compiler. The source candidate passed 90 tests. A separately installed wheel passed fixture browser execution and the eight-tool MCP handshake. Hermes v0.22, using a fresh isolated home written by the installer, proposed a plan and then executed/read its verified result after UI approval. Installed live searches for `teaching` and `browser` on `wspotter/HoldMyBeer` returned distinct matching issue sets. No login or remote writes occurred.
 

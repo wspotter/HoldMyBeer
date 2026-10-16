@@ -61,6 +61,8 @@ def test_browser_saves_changed_steps_as_new_revision_and_preserves_conflicting_e
         try:
             page = browser.new_page()
             page.goto(base)
+            page.get_by_role("button", name="Advanced", exact=True).click()
+            expect(page.locator("#sessions button.selected")).to_be_visible()
             page.locator('[data-tab="teach"]').click()
             page.locator('#loadPractice').click()
             page.locator('#save').click()
@@ -104,6 +106,8 @@ def test_guided_demo_preserves_dirty_workflow_and_requires_explicit_review(serve
         try:
             page = browser.new_page()
             page.goto(base)
+            page.get_by_role("button", name="Advanced", exact=True).click()
+            expect(page.locator("#sessions button.selected")).to_be_visible()
             expect(page.locator("#notes")).to_have_value("Saved personal notes")
             page.locator("#notes").fill("Unsaved personal edit")
             page.locator("#guidedStart").click()
@@ -191,6 +195,8 @@ def test_guided_demo_retry_after_refresh_failure_restores_practice_procedure(ser
         try:
             page = browser.new_page()
             page.goto(base)
+            page.get_by_role("button", name="Advanced", exact=True).click()
+            expect(page.locator("#sessions button.selected")).to_be_visible()
             expect(page.locator("#title")).to_have_value("Existing workflow")
             failed = {"refresh": False}
 
@@ -375,3 +381,58 @@ def test_batch_runs_stop_after_first_failure_and_return_individual_receipts(serv
     assert len(batch["runs"]) == 1
     assert batch["runs"][0]["status"] == "needs_teaching"
     assert batch["runs"][0]["inputs"]["filename"] == "first.mp4"
+
+
+def test_compact_first_use_requires_fresh_consent_and_retains_readable_result(server):
+    from playwright.sync_api import sync_playwright, expect
+
+    base, _ = server
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.goto(base)
+            expect(page.get_by_role("button", name="Try the example", exact=True)).to_be_visible()
+            expect(page.locator("#advancedView")).to_be_hidden()
+            assert httpx.get(base + "/api/sessions").json()["sessions"] == []
+            page.get_by_role("button", name="Try the example", exact=True).click()
+            expect(page.locator("#demoRun")).to_be_disabled()
+            page.locator("#demoConsent").check()
+            page.locator("#demoCaption").fill("Fresh details from a first-time user")
+            expect(page.locator("#demoConsent")).not_to_be_checked()
+            expect(page.locator("#demoRun")).to_be_disabled()
+            page.locator("#demoFilename").fill("first-use.txt")
+            page.locator("#demoConsent").check()
+            page.locator("#demoRun").click()
+            expect(page.get_by_role("heading", name="Draft saved.", exact=True)).to_be_visible(timeout=20000)
+            expect(page.locator("#demoResult")).to_contain_text("first-use.txt")
+            expect(page.locator("#demoResult")).to_contain_text("Fresh details from a first-time user")
+            saved = httpx.get(base + "/api/sessions").json()["sessions"]
+            assert len(saved) == 1
+            assert saved[0]["runs"][-1]["status"] == "verified"
+            assert saved[0]["runs"][-1]["draft_id"]
+            page.reload()
+            page.get_by_role("button", name="Saved tasks", exact=True).click()
+            page.get_by_role("button", name="Practice · Save a draft Draft saved · View result", exact=True).click()
+            expect(page.get_by_role("heading", name="Draft saved.", exact=True)).to_be_visible()
+            page.get_by_role("button", name="Try different details", exact=True).click()
+            expect(page.locator("#demoConsent")).not_to_be_checked()
+            expect(page.locator("#demoRun")).to_be_disabled()
+            assert len(httpx.get(base + "/api/sessions").json()["sessions"]) == 1
+            # The server saves the draft, but the response never reaches the page.
+            def lose_saved_response(route):
+                route.fetch(timeout=30000)
+                route.abort()
+            page.route("**/api/sessions/*/run", lose_saved_response)
+            page.locator("#demoCaption").fill("Saved despite a lost response")
+            page.locator("#demoConsent").check()
+            page.locator("#demoRun").click()
+            expect(page.locator("#demoCheck")).to_be_visible(timeout=20000)
+            expect(page.locator("#demoRun")).to_be_disabled()
+            page.locator("#demoCheck").click()
+            expect(page.locator("#demoResult")).to_contain_text("Saved despite a lost response")
+            latest = httpx.get(base + "/api/sessions").json()["sessions"][0]
+            assert len(latest["runs"]) == 2
+            assert latest["runs"][-1]["status"] == "verified"
+        finally:
+            browser.close()

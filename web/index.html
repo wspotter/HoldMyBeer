@@ -3,18 +3,88 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>HoldMyBeer · Workflow teaching</title>
+    <title>HoldMyBeer · Start here</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <header>
-      <a class="brand" href="/">HoldMyBeer<span> / LAB</span></a>
-      <div class="header-right">
-        <span class="status-dot"></span> LOCAL PREVIEW
-        <a href="#practice">Practice task ↓</a>
-      </div>
+    <header class="app-header">
+      <a class="brand" href="/">HoldMyBeer</a>
+      <nav class="app-nav" aria-label="Main navigation">
+        <button type="button" data-view="home" aria-current="page">Start</button>
+        <button type="button" data-view="saved">Saved tasks</button>
+        <button type="button" data-view="advanced">Advanced</button>
+      </nav>
     </header>
+    <main id="simpleApp" class="simple-app">
+      <section id="homeView" class="simple-view" aria-labelledby="welcomeTitle">
+        <p class="eyebrow">SMALL TASKS. A LITTLE LESS REPETITION.</p>
+        <h1 id="welcomeTitle" tabindex="-1">Teach an assistant<br />your repeat tasks.</h1>
+        <p class="welcome-copy">Show what you do. Check the steps. Let it try.</p>
+        <p class="preview-note">Early preview: start with a ready-made task.<br />Teaching new tasks from recordings is still experimental.</p>
+        <section class="first-task" aria-labelledby="firstTaskTitle">
+          <span class="task-label">NEW HERE? START WITH THIS</span>
+          <h2 id="firstTaskTitle">Let it save a practice draft.</h2>
+          <p>Choose a file name and a caption. HoldMyBeer fills them in, saves a draft, and shows you the result.</p>
+          <button class="primary" id="demoBegin" type="button">Try the example</button>
+          <small>About a minute · Stays on this computer · Nothing gets posted</small>
+        </section>
+        <button class="task-link" id="openBrief" type="button"><span><strong>Already use GitHub?</strong><br />Collect a short list of a project’s open issues.</span><span aria-hidden="true">→</span></button>
+        <p class="simple-footnote">No account or AI setup needed for these examples.</p>
+      </section>
+      <section id="demoView" class="simple-view" aria-labelledby="demoTitle" hidden>
+        <button class="back-link" type="button" data-view="home">← All tasks</button>
+        <p class="eyebrow">PRACTICE EXAMPLE</p>
+        <h1 id="demoTitle" tabindex="-1">Save a draft for me.</h1>
+        <p class="compact-copy">Try a harmless task before using your own work. No recording needed.</p>
+        <form id="demoForm" class="task-surface">
+          <h2>1. Choose the details</h2>
+          <div class="compact-fields">
+            <div><label for="demoFilename">File name</label><input id="demoFilename" value="my-first-draft.txt" required maxlength="160" /><small>A sample text file is made for you.</small></div>
+            <div><label for="demoCaption">Caption</label><input id="demoCaption" value="My first HoldMyBeer draft." required maxlength="5000" /></div>
+          </div>
+          <h2>2. Check what will happen</h2>
+          <ol class="plain-steps"><li>Select the sample file.</li><li>Enter your caption.</li><li>Click Save draft in the practice app.</li><li>Check that the saved details match.</li></ol>
+          <label class="check"><input id="demoConsent" type="checkbox" required /> I checked these steps. Save this practice draft.</label>
+          <button id="demoRun" class="primary" type="submit" disabled>Save my practice draft</button>
+          <p id="demoStatus" class="task-status" role="status" aria-live="polite">Nothing has run yet. You’re in control.</p>
+        </form>
+        <button id="demoCheck" type="button" class="quiet" hidden>Check for a saved result</button>
+        <section id="demoResult" class="task-surface result-surface" aria-label="Practice result" hidden></section>
+      </section>
+      <section id="briefView" class="simple-view" aria-labelledby="issueBriefHeading" hidden>
+        <button class="back-link" type="button" data-view="home">← All tasks</button>
+        <p class="eyebrow">GITHUB · PUBLIC PROJECTS ONLY</p>
+        <h1 id="issueBriefHeading" tabindex="-1">Collect open issues.</h1>
+        <p class="compact-copy">An issue is a bug report or request on GitHub. Get a list of titles and links to review later.</p>
+        <form id="briefForm" class="task-surface">
+          <h2>1. Choose what to look for</h2>
+          <label for="briefRepository">GitHub project (owner/name)</label>
+          <input id="briefRepository" value="wspotter/HoldMyBeer" maxlength="140" required pattern="[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+" />
+          <small>Keep this example, or enter a public project you know.</small>
+          <div class="compact-fields"><div><label for="briefKeyword">Words to look for (optional)</label><input id="briefKeyword" placeholder="For example: browser" maxlength="80" /></div><div><label for="briefLimit">How many results?</label><input id="briefLimit" type="number" min="1" max="10" value="5" required /></div></div>
+          <button class="primary" id="briefPrepare" type="submit">Review the steps</button>
+        </form>
+        <section id="briefPlan" class="task-surface" hidden>
+          <h2>2. Check what will happen</h2>
+          <div id="briefPlanSummary"></div>
+          <details class="technical-details"><summary>Technical details</summary><pre id="briefPlanText"></pre></details>
+          <div id="briefApprovalControls"><label class="check"><input id="briefConsent" type="checkbox" /> I checked this plan. Allow this read-only task.</label><button id="briefApprove" class="primary" type="button" disabled>Approve these steps</button></div>
+          <button id="briefStart" class="primary" type="button" disabled hidden>Run this task</button>
+          <button id="briefCancel" class="quiet" type="button" disabled hidden>Cancel task</button>
+        </section>
+        <p id="briefStatus" class="task-status" role="status" aria-live="polite">Nothing has run yet. Review the steps first.</p>
+        <div id="briefResult"></div>
+        <button class="back-link" id="briefHistory" type="button" hidden>Show results for this saved task</button>
+      </section>
+      <section id="savedView" class="simple-view" aria-labelledby="savedTitle" hidden>
+        <h1 id="savedTitle" tabindex="-1">Saved tasks</h1>
+        <p class="compact-copy">Your tasks and results stay on this computer.</p>
+        <p id="savedStatus" role="status" aria-live="polite"></p>
+        <div id="savedList" class="saved-list"></div>
+      </section>
+    </main>
+    <section id="advancedView" hidden aria-label="Advanced recording workspace">
     <div class="layout">
       <aside>
         <div class="aside-title">
@@ -32,19 +102,7 @@
         </div>
       </aside>
       <main>
-        <div class="intro">
-          <div>
-            <p class="eyebrow">DEMONSTRATION → PROCEDURE → PROOF</p>
-            <h1>Show it once.<br /><span>Make it repeatable.</span></h1>
-            <p class="intro-copy">
-              A workspace for teaching your agent how you actually work.
-            </p>
-            <button class="primary" id="guidedStart" type="button">Try a guided demo <span>↗</span></button>
-          </div>
-          <div class="stamp">
-            HOLD MY<br /><strong>BEER.</strong><span>LET ME TRY THIS.</span>
-          </div>
-        </div>
+        <div class="advanced-intro"><p class="eyebrow">ADVANCED · EXPERIMENTAL</p><h2>Record and review a task</h2><p>Capture what you do and review it with a connected AI assistant. A recording does not turn into a runnable task automatically.</p><button class="quiet" id="guidedStart" type="button">Open the detailed practice walkthrough</button></div>
         <section id="guidedDemo" class="guided-demo" aria-labelledby="guidedTitle" hidden>
           <p class="eyebrow">FIXTURE-ONLY FIRST USE</p>
           <h2 id="guidedTitle">A new practice workflow, kept separate.</h2>
@@ -265,38 +323,16 @@ A fresh example, prepared for review.</textarea
             </div>
           </div>
         </section>
-        <section class="panel" aria-labelledby="issueBriefHeading" style="margin:24px 0;padding:24px">
-          <h2 id="issueBriefHeading">A real workflow: GitHub issue brief</h2>
-          <p>Read public open issues and retain a local report. This supported procedure never signs in or posts. It is separate from fixture practice and does not compile arbitrary recordings.</p>
-          <label for="briefRepository">Public repository (owner/name)</label>
-          <input id="briefRepository" value="wspotter/HoldMyBeer" maxlength="140" />
-          <label for="briefKeyword">Search words (optional)</label>
-          <input id="briefKeyword" placeholder="For example: teaching" maxlength="80" />
-          <label for="briefLimit">Maximum issues in report</label>
-          <input id="briefLimit" type="number" min="1" max="10" value="10" />
-          <button id="briefPrepare" type="button">Prepare issue procedure</button>
-          <button id="briefHistory" type="button">Load issue brief history</button>
-          <div id="briefPlan" hidden>
-            <h3>Review this exact procedure</h3>
-            <pre id="briefPlanText" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
-            <div id="briefApprovalControls">
-              <label><input id="briefConsent" type="checkbox" /> I approve these exact inputs and read-only actions.</label>
-              <button id="briefApprove" type="button" disabled>Approve procedure</button>
-            </div>
-          </div>
-          <button id="briefStart" type="button" disabled>Run approved issue brief</button>
-          <button id="briefCancel" type="button" disabled>Cancel issue brief</button>
-          <p id="briefStatus" role="status" aria-live="polite">Select or create a workflow, then prepare its issue brief.</p>
-          <div id="briefResult"></div>
-        </section>
         <footer>
           <span>HoldMyBeer / Experimental agent skill</span
           ><span>Built to be taught. Built to be questioned.</span>
         </footer>
       </main>
     </div>
+    </section>
     <div id="toast" role="status" aria-live="polite"></div>
     <script src="/app.js"></script>
+    <script src="/simple.js"></script>
     <script src="/briefs.js"></script>
   </body>
 </html>

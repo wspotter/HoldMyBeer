@@ -759,19 +759,12 @@ async function boot() {
   try {
     await api("/api/status");
     await refresh();
-    if (!sessions.length) {
-      const s = await api("/api/sessions", {
-        method: "POST",
-        body: JSON.stringify({ title: "Prepare a video draft" }),
-      });
-      await refresh();
-      await selectSession(s.id);
-    } else await selectSession(sessions[0].id);
+    if (sessions.length) await selectSession(sessions[0].id);
   } catch (e) {
     toast(`Could not load workspace: ${e.message}`);
   }
 }
-boot();
+const workspaceReady = boot();
 
 $("mediaMode").onchange = syncMediaMode;
 $("existingDraft").onchange = syncDraftFields;

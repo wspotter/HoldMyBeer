@@ -1,6 +1,6 @@
-# 0.3.0a1: unpublished local release candidate
+# 0.3.0a2: unpublished local release candidate
 
-This candidate adds an opt-in Hermes MCP installer and a human-approved, read-only public GitHub issue brief. It includes the launcher/doctor and guided fixture practice from the earlier engineering candidate. No public release or production deployment has occurred.
+This candidate adds a compact first-use interface, an opt-in Hermes MCP installer and a human-approved, read-only public GitHub issue brief. It includes the launcher/doctor and guided fixture practice from the earlier engineering candidate. No public release or production deployment has occurred.
 
 ## Install and use
 
@@ -8,7 +8,7 @@ Obtain the reviewed wheel and its SHA-256 from the retained release checkpoint. 
 
 ```sh
 python3 -m venv /absolute/path/to/hmb-env
-/absolute/path/to/hmb-env/bin/python -m pip install /absolute/path/to/holdmybeer-0.3.0a1-py3-none-any.whl
+/absolute/path/to/hmb-env/bin/python -m pip install /absolute/path/to/holdmybeer-0.3.0a2-py3-none-any.whl
 /absolute/path/to/hmb-env/bin/python -m playwright install chromium
 /absolute/path/to/hmb-env/bin/holdmybeer doctor
 /absolute/path/to/hmb-env/bin/holdmybeer --data-dir /absolute/private/path/to/hmb-data

@@ -2,7 +2,7 @@
 
 **Teach your agent by showing it.**
 
-Local teaching alpha candidate `0.3.0a1`, not yet published. This candidate adds a launcher, guided practice task, explicit Hermes MCP setup and a read-only public GitHub issue brief. The [older prerelease](https://github.com/wspotter/HoldMyBeer/releases/tag/v0.2.0a1) predates these features.
+Local teaching alpha candidate `0.3.0a2`, not yet published. This candidate adds a launcher, guided practice task, explicit Hermes MCP setup and a read-only public GitHub issue brief. The [older prerelease](https://github.com/wspotter/HoldMyBeer/releases/tag/v0.2.0a1) predates these features.
 
 The goal: show an app workflow, let the agent ask questions, then watch it try and improve from your corrections. This first prototype supplies the recording workspace and a reproducible trial engine. HoldMyBeer is an early plugin/skill project for teaching and checking browser workflows with the agent you already use. The shared engine is intended to support MCP-compatible clients such as Codex, Claude Code and editor integrations; Hermes is the first adapter. A stdio MCP bridge now exposes local recordings and teaching proposals; see [client setup](docs/CLIENTS.md). Individual client installations still need end-to-end verification.
 
@@ -35,7 +35,9 @@ The source checkout is the contributor path. After installing a wheel built from
 
 Open <http://127.0.0.1:18940>. Data is stored outside the repository under `~/.local/share/holdmybeer` by default; set `HMB_DATA_DIR` to choose another private local directory. Browser capture may require a secure context; use localhost as shown.
 
-Click **Try a guided demo**, inspect the four actions, confirm inspection, then explicitly authorize the trial in **Let it try**. The separate practice workflow preserves saved personal workflows and refuses to replace unsaved edits. A successful run shows the retained filename, caption and draft ID; history survives refresh. This fixture-only demo does not automate a real website. Browser or connection errors show a repair step; repair the setup and authorize a retry yourself.
+Click **Try the example**. Choose a file name and caption, read the four steps, check the permission box, then choose **Save my practice draft**. The result shows the saved details and a screenshot link. **Saved tasks** reopens your results after refresh. Editing the details clears permission before another run. The example uses a harmless local practice app and does not publish anything.
+
+The compact start screen also offers a public GitHub issue report. Recording, agent connection and manual teaching tools live under **Advanced**. A recording does not automatically become a runnable task. The original detailed practice walkthrough remains available there.
 
 ## Contribute
 

@@ -4,11 +4,13 @@ This is a named supported browser procedure in the unreleased 0.3 alpha candidat
 
 ## Use
 
-1. Start `holdmybeer` on loopback and create or select a workflow.
-2. In **A real workflow: GitHub issue brief**, enter `owner/repository`, optional plain search words, and a maximum of 1–10 issues.
-3. Choose **Prepare issue procedure**. Read the exact target, inputs, steps and session revision. Check explicit consent and choose **Approve procedure**.
-4. Choose **Run approved issue brief**, or ask a connected agent to call `hmb_execute_approved_brief` with the approved job ID. Preparation is not approval and running is not success.
-5. Inspect the retained result and download its JSON report. **Load issue brief history** reopens jobs after reload. Each new input set requires a new reviewed plan.
+1. Start `holdmybeer` on loopback. On **Start**, choose **Already use GitHub?**
+2. Enter `owner/repository`, optional plain search words, and a maximum of 1–10 issues. A separate saved task is created for you; no recording or agent connection is needed.
+3. Choose **Review the steps**. Read the target, inputs and plain-language actions. Technical details are available in a collapsed disclosure. Check permission and choose **Approve these steps**.
+4. Choose **Run this task**, or ask a connected agent to call `hmb_execute_approved_brief` with the approved job ID. Preparation is not approval and running is not success.
+5. Review the issue titles and source links, or download the JSON snapshot. **Saved tasks** reopens reports after refresh. **Try another search** returns to the inputs; every new input set needs a newly reviewed plan. Older recording workspaces have a **Find GitHub reports in this older task** action.
+
+For a plan proposed by an agent, find its workspace in **Saved tasks**, open its GitHub reports and select the pending task. UI approval and execution remain separate.
 
 The report is a snapshot of visible matching links, not a complete repository audit, issue resolution or model-generated priority assessment. Page text and issue titles are untrusted content. Follow source links to assess the underlying issues yourself.
 

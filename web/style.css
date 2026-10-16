@@ -821,3 +821,67 @@ a:focus-visible {
 .practice-panel { margin: 24px 0; }
 .practice-panel iframe { width: 100%; height: 420px; border: 1px solid var(--line); border-radius: 8px; background: #f5f4ec; }
 .step select { width: 100%; margin: 6px 0 14px; }
+
+/* First-use screens: one task at a time, with the workshop behind Advanced. */
+[hidden] { display: none !important; }
+:root { --muted: #596052; }
+.app-header { height: 68px; padding: 0 max(20px, calc((100vw - 960px) / 2)); gap: 24px; }
+.app-header .brand { font-size: 23px; letter-spacing: -1px; white-space: nowrap; }
+.app-nav { display: flex; gap: 4px; margin: 0; }
+.app-nav button { width: auto; margin: 0; padding: 9px 12px; font-size: 13px; text-align: center; }
+.app-nav button[aria-current] { background: #e6e9dc; font-weight: 700; }
+.simple-app { max-width: 688px; padding: 40px 24px 32px; margin: 0 auto; }
+.simple-view h1 { font-size: clamp(30px, 4vw, 40px); line-height: 1.12; letter-spacing: -1.2px; margin: 10px 0 12px; }
+.simple-view h2 { font-size: 18px; letter-spacing: -.3px; margin: 0 0 12px; }
+.simple-view p { line-height: 1.55; }
+.simple-view .eyebrow { letter-spacing: 1.4px; font-size: 10px; margin: 0 0 12px; }
+.welcome-copy { font-size: 17px; margin: 0 0 16px; }
+.preview-note, .compact-copy { color: var(--muted); font-size: 14px; margin: 0 0 24px; }
+.first-task, .task-surface { background: #fcfbf6; border: 1px solid var(--line); border-radius: 8px; padding: 24px; }
+.first-task { border-top: 3px solid #84974e; margin: 24px 0 12px; }
+.task-label { display: block; font-size: 10px; font-weight: 700; letter-spacing: 1.2px; color: var(--muted); margin-bottom: 12px; }
+.first-task p { max-width: 440px; margin: 0 0 20px; }
+.simple-view small { display: block; font-size: 12px; line-height: 1.45; color: var(--muted); margin-top: 8px; }
+.first-task > small { margin-top: 12px; }
+.task-link { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; text-align: left; padding: 16px 24px; border: 0; background: transparent; border-radius: 6px; line-height: 1.6; }
+.task-link:hover { background: #e6e9dc; }
+.simple-footnote { font-size: 12px; color: var(--muted); padding: 0 24px; margin: 12px 0 0; }
+.back-link { border: 0; background: none; color: var(--muted); padding: 0; margin-bottom: 20px; font-size: 13px; }
+.task-surface { margin: 16px 0; }
+.simple-view label:not(.check) { font-size: 13px; margin: 0 0 8px; }
+.simple-view input { padding: 10px 12px; min-width: 0; font-size: 14px; }
+.compact-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0 20px; }
+.compact-fields > div { min-width: 0; }
+.simple-view .check { font-size: 13px; margin: 16px 0; align-items: flex-start; }
+.simple-view input[type=checkbox] { width: 16px; height: 16px; flex: 0 0 16px; accent-color: #4c6432; }
+.plain-steps { padding-left: 22px; color: var(--muted); line-height: 1.65; margin: 0 0 16px; }
+.task-status { font-size: 13px; color: var(--muted); margin: 12px 0 0; overflow-wrap: anywhere; }
+.simple-view pre { font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow-y: auto; }
+.simple-view .technical-details { margin: 16px 0; color: var(--muted); font-size: 12px; }
+.technical-details summary { cursor: pointer; }
+.result-surface { border-top: 3px solid #84974e; }
+.receipt-fields { margin: 20px 0; display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 12px; }
+.receipt-fields dt { color: var(--muted); }
+.receipt-fields dd { margin: 0; overflow-wrap: anywhere; font-weight: 600; }
+.saved-list { display: grid; gap: 8px; }
+.saved-task { display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--line); background: #fcfbf6; padding: 18px; text-align: left; border-radius: 6px; }
+.saved-task strong { overflow-wrap: anywhere; }
+.saved-task span { font-size: 12px; color: var(--muted); }
+.issue-list { padding-left: 24px; }
+.issue-list li { margin: 12px 0; line-height: 1.5; }
+.simple-view .primary { margin-top: 0; min-height: 42px; }
+.simple-view button:disabled { cursor: not-allowed; }
+button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid #4c6432; outline-offset: 3px; }
+h1:focus, h2:focus { outline: none; }
+.advanced-intro { margin-bottom: 24px; max-width: 640px; }
+@media (max-width: 600px) {
+  .app-header { padding: 12px 16px; height: auto; flex-wrap: wrap; gap: 12px; }
+  .app-nav { width: 100%; }
+  .app-nav button { flex: 1; padding: 8px; }
+  .simple-app { padding: 28px 16px; }
+  .first-task, .task-surface { padding: 20px; }
+  .compact-fields { grid-template-columns: 1fr; gap: 16px; }
+  .simple-view h1 { font-size: 32px; }
+  .task-link { padding: 16px 12px; }
+  .saved-task { flex-direction: column; align-items: flex-start; gap: 8px; }
+}

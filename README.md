@@ -48,3 +48,6 @@ This is an experimental preview. See [DEVELOPER.md](DEVELOPER.md) for the curren
 The next substantial contributions are independent client installation tests, richer browser action contracts, and a verified workflow beyond the practice fixture. Start with the [architecture contract](docs/CONTRACT.md) and [contribution guide](CONTRIBUTING.md). No fine-tuning is required: the reusable artifact is a tested procedure.
 
 See [verified preview evidence](docs/VERIFICATION.md).
+
+For one reviewed four-step task with a reproducible browser check, see the
+[fictional fixture draft example](docs/FIXTURE_EXAMPLE.md).

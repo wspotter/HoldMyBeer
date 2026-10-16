@@ -1,4 +1,6 @@
 import socket
+import json
+from pathlib import Path
 import threading
 import time
 
@@ -30,6 +32,33 @@ def server(tmp_path):
     instance.should_exit = True
     thread.join(timeout=3)
     sock.close()
+
+
+def test_documented_fixture_example(server):
+    base, _ = server
+    procedure = json.loads((Path(__file__).resolve().parents[1] / "docs/examples/fixture-draft.json").read_text())
+    session = httpx.post(base + "/api/sessions", json={"title": "Fictional fixture example"}).json()
+    url = base + f"/api/sessions/{session['id']}"
+    saved = httpx.put(url, json={"procedure": procedure})
+    assert saved.status_code == 200
+    inputs = {"mode": "procedure", "media_mode": "new", "filename": "demo-orbit.mp4",
+              "caption": "A paper moon over a fictional harbour."}
+    normal = httpx.post(url + "/run", json=inputs, timeout=30).json()
+    assert normal["status"] == "verified", normal
+    drafts = httpx.get(base + "/api/fixture/drafts").json()["drafts"]
+    retained = next(item for item in drafts if item["id"] == normal["draft_id"])
+    assert retained["filename"] == inputs["filename"] and retained["caption"] == inputs["caption"]
+    stopped = httpx.post(url + "/run", json={**inputs, "variant": "changed"}, timeout=30).json()
+    assert stopped["status"] == "needs_teaching", stopped
+    assert len(httpx.get(base + "/api/fixture/drafts").json()["drafts"]) == len(drafts)
+    procedure["revision"] += 1
+    procedure["steps"][2]["target"] = "Store draft"
+    assert httpx.put(url, json={"procedure": procedure}).status_code == 200
+    repaired = httpx.post(url + "/run", json={**inputs, "variant": "changed"}, timeout=30).json()
+    assert repaired["status"] == "verified", repaired
+    assert repaired["draft_id"] != normal["draft_id"]
+    earlier = httpx.get(url + f"/runs/{normal['id']}").json()
+    assert earlier["procedure"]["steps"][2]["target"] == "Save draft"
 
 
 def test_sessions_persist_and_unknown_ids_are_rejected(server):

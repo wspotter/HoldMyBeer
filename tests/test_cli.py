@@ -1,5 +1,6 @@
 """Tests for the packaged ``holdmybeer`` CLI: launch defaults, port handling and the read-only doctor."""
 import argparse
+import json
 import socket
 import sys
 
@@ -51,6 +52,153 @@ def test_default_port_is_loopback_and_stable():
     args = parser.parse_args([])
     assert args.port == cli.DEFAULT_PORT
     assert args.host == cli.DEFAULT_HOST
+
+
+def _fake_mcp_command(tmp_path, monkeypatch):
+    command = tmp_path / "bin" / "holdmybeer-mcp"
+    command.parent.mkdir()
+    command.write_text("#!/bin/sh\nexit 0\n")
+    command.chmod(0o755)
+    active_bin = tmp_path / "active" / "bin"
+    active_bin.mkdir(parents=True)
+    monkeypatch.setattr(cli.sys, "executable", str(active_bin / "python"))
+    monkeypatch.setattr(cli.shutil, "which", lambda name: str(command) if name == "holdmybeer-mcp" else None)
+    return command.resolve()
+
+
+def test_connect_hermes_requires_explicit_home_and_does_not_touch_default_profile(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("HMB_DATA_DIR", raising=False)
+    data_dir = tmp_path / "hmb-data"
+    code = cli.main(["connect", "hermes", "--data-dir", str(data_dir)])
+    assert code == cli.EXIT_ERROR
+    assert "--home is required" in capsys.readouterr().err
+    assert not (tmp_path / ".hermes" / "config.yaml").exists()
+
+
+def test_connect_hermes_creates_private_isolated_config(tmp_path, monkeypatch, capsys):
+    command = _fake_mcp_command(tmp_path, monkeypatch)
+    home = tmp_path / "hermes-home"
+    data_dir = tmp_path / "hmb-data"
+    code = cli.main(["connect", "hermes", "--home", str(home), "--data-dir", str(data_dir)])
+    assert code == cli.EXIT_OK
+    config_path = home / "config.yaml"
+    config = json.loads(config_path.read_text())
+    assert config == {
+        "mcp_servers": {
+            "holdmybeer": {
+                "command": str(command),
+                "args": [],
+                "env": {"HMB_DATA_DIR": str(data_dir), "HMB_URL": cli.DEFAULT_HMB_URL},
+            }
+        }
+    }
+    assert config_path.stat().st_mode & 0o777 == 0o600
+    assert list(home.glob("config.yaml.bak-*")) == []
+    assert "does not start Hermes" in capsys.readouterr().out
+
+
+def test_connect_hermes_preserves_other_json_settings_and_backs_up_first(tmp_path, monkeypatch, capsys):
+    command = _fake_mcp_command(tmp_path, monkeypatch)
+    home = tmp_path / "hermes-home"
+    home.mkdir()
+    config_path = home / "config.yaml"
+    original = '{"model": {"name": "local"}, "mcp_servers": {"calendar": {"url": "http://localhost"}}}\n'
+    config_path.write_text(original)
+    code = cli.main(["connect", "hermes", "--home", str(home), "--data-dir", str(tmp_path / "data")])
+    assert code == cli.EXIT_OK
+    backups = list(home.glob("config.yaml.bak-*"))
+    assert len(backups) == 1
+    assert backups[0].read_text() == original
+    result = json.loads(config_path.read_text())
+    assert result["model"] == {"name": "local"}
+    assert result["mcp_servers"]["calendar"] == {"url": "http://localhost"}
+    assert result["mcp_servers"]["holdmybeer"]["command"] == str(command)
+    assert "Backup:" in capsys.readouterr().out
+
+
+def test_connect_hermes_exact_entry_is_idempotent_without_backup(tmp_path, monkeypatch, capsys):
+    command = _fake_mcp_command(tmp_path, monkeypatch)
+    home = tmp_path / "hermes-home"
+    data_dir = tmp_path / "data"
+    entry = cli._hermes_mcp_entry(data_dir, command)
+    home.mkdir()
+    (home / "config.yaml").write_text(json.dumps({"mcp_servers": {"holdmybeer": entry}}))
+    original = (home / "config.yaml").read_bytes()
+    code = cli.main(["connect", "hermes", "--home", str(home), "--data-dir", str(data_dir)])
+    assert code == cli.EXIT_OK
+    assert (home / "config.yaml").read_bytes() == original
+    assert list(home.glob("config.yaml.bak-*")) == []
+    assert "already matches" in capsys.readouterr().out
+
+
+def test_connect_hermes_uses_explicit_url_and_active_environment_executable(tmp_path, monkeypatch):
+    active_bin = tmp_path / "active" / "bin"
+    active_bin.mkdir(parents=True)
+    sibling = active_bin / "holdmybeer-mcp"
+    sibling.write_text("#!/bin/sh\nexit 0\n")
+    sibling.chmod(0o755)
+    other = tmp_path / "other" / "bin" / "holdmybeer-mcp"
+    other.parent.mkdir(parents=True)
+    other.write_text("#!/bin/sh\nexit 0\n")
+    other.chmod(0o755)
+    monkeypatch.setattr(cli.sys, "executable", str(active_bin / "python"))
+    monkeypatch.setattr(cli.shutil, "which", lambda name: str(other))
+    home = tmp_path / "hermes-home"
+    data_dir = tmp_path / "data"
+    code = cli.main([
+        "connect", "hermes", "--home", str(home), "--data-dir", str(data_dir),
+        "--url", "http://localhost:18941/",
+    ])
+    assert code == cli.EXIT_OK
+    entry = json.loads((home / "config.yaml").read_text())["mcp_servers"]["holdmybeer"]
+    assert entry["command"] == str(sibling.resolve())
+    assert entry["env"] == {"HMB_DATA_DIR": str(data_dir), "HMB_URL": "http://localhost:18941"}
+
+
+@pytest.mark.parametrize("url", [
+    "https://127.0.0.1:18940",
+    "http://example.com:18940",
+    "http://127.0.0.1:0",
+    "http://127.0.0.1:65536",
+    "http://127.0.0.1:nope",
+    "http://127.0.0.1:",
+    "http://user@127.0.0.1:18940",
+    "http://127.0.0.1:18940/private",
+    "http://127.0.0.1:18940?x=1",
+    "http://127.0.0.1:18940#fragment",
+    "http://127.0.0.1:18940?",
+    "http://127.0.0.1:18940#",
+])
+def test_connect_hermes_rejects_non_loopback_or_malformed_urls(url):
+    with pytest.raises(ValueError):
+        cli._loopback_http_url(url)
+
+
+@pytest.mark.parametrize("url", [
+    "http://127.0.0.1:18940",
+    "http://localhost:1/",
+    "http://[::1]:65535",
+])
+def test_connect_hermes_accepts_loopback_http_urls(url):
+    assert cli._loopback_http_url(url).rstrip("/") == url.rstrip("/")
+
+
+def test_connect_hermes_refuses_conflicting_or_non_json_yaml_without_changes(tmp_path, monkeypatch, capsys):
+    _fake_mcp_command(tmp_path, monkeypatch)
+    home = tmp_path / "hermes-home"
+    home.mkdir()
+    config_path = home / "config.yaml"
+    for original, expected_error in [
+        ('{"mcp_servers":{"holdmybeer":{"command":"/other/server"}}}\n', "already exists with different settings"),
+        ("model:\n  name: local\n", "not JSON-compatible YAML"),
+    ]:
+        config_path.write_text(original)
+        code = cli.main(["connect", "hermes", "--home", str(home), "--data-dir", str(tmp_path / "data")])
+        assert code == cli.EXIT_ERROR
+        assert config_path.read_text() == original
+        assert list(home.glob("config.yaml.bak-*")) == []
+        assert expected_error in capsys.readouterr().err
 
 
 # --------------------------------------------------------------------------- #

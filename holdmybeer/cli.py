@@ -14,13 +14,17 @@ from __future__ import annotations
 import argparse
 import errno
 import importlib
+import json
 import os
 import shlex
 import shutil
 import socket
 import sys
+import tempfile
+import time
 from pathlib import Path
 from typing import Sequence
+from urllib.parse import urlsplit
 
 from . import __version__
 
@@ -28,6 +32,7 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 18940
 DEFAULT_DATA_DIR_ENV = "HMB_DATA_DIR"
 DEFAULT_DATA_DIR = "~/.local/share/holdmybeer"
+DEFAULT_HMB_URL = "http://127.0.0.1:18940"
 
 # Required runtime imports for the preview and its runner. Optional frame tools
 # (ffmpeg/ffprobe) are reported but do not gate launch or the doctor exit code.
@@ -215,6 +220,144 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# Hermes client configuration
+# --------------------------------------------------------------------------- #
+def _absolute_path(value: str | None, option: str) -> Path:
+    if not value:
+        raise ValueError(f"{option} is required; pass an absolute path")
+    path = Path(value)
+    if not path.is_absolute():
+        raise ValueError(f"{option} must be an absolute path: {value}")
+    return path.resolve()
+
+
+def _loopback_http_url(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("--url must be an HTTP loopback URL with a valid port") from exc
+    if (
+        parsed.scheme != "http"
+        or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+        or "?" in value
+        or "#" in value
+        or (port is not None and not 1 <= port <= 65535)
+        or parsed.netloc.endswith(":")
+    ):
+        raise ValueError("--url must be an HTTP loopback URL without credentials, path, query, or fragment")
+    return value.rstrip("/")
+
+
+def _installed_mcp_command() -> Path | None:
+    sibling = Path(sys.executable).absolute().parent / "holdmybeer-mcp"
+    if sibling.is_file() and os.access(sibling, os.X_OK):
+        return sibling.resolve()
+    command_text = shutil.which("holdmybeer-mcp")
+    if not command_text:
+        return None
+    command = Path(command_text).resolve()
+    return command if command.is_file() and os.access(command, os.X_OK) else None
+
+
+def _hermes_mcp_entry(data_dir: Path, command: Path, url: str = DEFAULT_HMB_URL) -> dict:
+    return {
+        "command": str(command),
+        "args": [],
+        "env": {DEFAULT_DATA_DIR_ENV: str(data_dir), "HMB_URL": url},
+    }
+
+
+def _write_hermes_config(home: Path, data_dir: Path, command: Path, url: str = DEFAULT_HMB_URL) -> tuple[bool, Path | None]:
+    """Merge one MCP entry into JSON-compatible YAML without a YAML dependency.
+
+    JSON is valid YAML. Refusing other YAML syntax lets this installer preserve
+    unrelated Hermes settings exactly instead of rewriting them with a
+    partial or lossy parser.
+    """
+    config_path = home / "config.yaml"
+    expected = _hermes_mcp_entry(data_dir, command, url)
+    if config_path.exists():
+        original = config_path.read_bytes()
+        try:
+            config = json.loads(original)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            snippet = json.dumps({"mcp_servers": {"holdmybeer": expected}}, indent=2)
+            raise ValueError(
+                "Existing config.yaml is not JSON-compatible YAML; it was left unchanged. "
+                "Merge this entry manually or use a dedicated empty --home:\n" + snippet
+            ) from exc
+        if not isinstance(config, dict):
+            raise ValueError("Existing config.yaml must contain a JSON/YAML mapping; no changes made")
+    else:
+        original = None
+        config = {}
+
+    servers = config.get("mcp_servers", {})
+    if not isinstance(servers, dict):
+        raise ValueError("Existing mcp_servers setting is not a mapping; no changes made")
+    if "holdmybeer" in servers:
+        if servers["holdmybeer"] == expected:
+            return False, None
+        raise ValueError("mcp_servers.holdmybeer already exists with different settings; no changes made")
+
+    config["mcp_servers"] = {**servers, "holdmybeer": expected}
+    payload = (json.dumps(config, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    backup_path = None
+    if original is not None:
+        backup_path = home / f"config.yaml.bak-{time.time_ns()}"
+        shutil.copy2(config_path, backup_path)
+
+    fd, temporary_name = tempfile.mkstemp(prefix=".config.yaml.", suffix=".tmp", dir=home)
+    try:
+        if original is None:
+            os.fchmod(fd, 0o600)
+        else:
+            os.fchmod(fd, config_path.stat().st_mode & 0o777)
+        with os.fdopen(fd, "wb") as temporary:
+            temporary.write(payload)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.replace(temporary_name, config_path)
+    except Exception:
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
+        raise
+    return True, backup_path
+
+
+def cmd_connect_hermes(args: argparse.Namespace) -> int:
+    try:
+        home = _absolute_path(args.home, "--home")
+        data_dir = _absolute_path(args.data_dir, "--data-dir")
+        url = _loopback_http_url(args.url)
+        command = _installed_mcp_command()
+        if command is None:
+            raise ValueError("holdmybeer-mcp is not installed or not on PATH; install the project environment first")
+        home.mkdir(parents=True, exist_ok=True)
+        changed, backup = _write_hermes_config(home, data_dir, command, url)
+    except (OSError, ValueError) as exc:
+        print(f"holdmybeer: could not configure Hermes: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    if changed:
+        print(f"Configured Hermes MCP entry in {home / 'config.yaml'}")
+        if backup:
+            print(f"Backup: {backup}")
+        print("Restart Hermes to load the MCP server. This command does not start Hermes or install skills.")
+    else:
+        print(f"Hermes MCP entry already matches in {home / 'config.yaml'}; no file changed.")
+    return EXIT_OK
+
+
+# --------------------------------------------------------------------------- #
 # launch
 # --------------------------------------------------------------------------- #
 def cmd_launch(args: argparse.Namespace) -> int:
@@ -269,7 +412,7 @@ def cmd_launch(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="holdmybeer",
-        description="Launch the local HoldMyBeer preview or run a read-only doctor check.",
+        description="Launch the local HoldMyBeer preview, check dependencies, or configure an explicit Hermes home.",
         epilog=(
             "The preview binds loopback only by default. Use --host to change the "
             "interface, --port to change the port, and --data-dir to store data "
@@ -285,8 +428,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "command",
         nargs="?",
-        choices=["doctor"],
-        help="Run a read-only dependency check instead of launching the preview.",
+        choices=["doctor", "connect"],
+        help="Run doctor, configure a client, or launch the preview when omitted.",
+    )
+    parser.add_argument(
+        "client",
+        nargs="?",
+        choices=["hermes"],
+        help="Client to configure after the connect command.",
     )
     # Launch options.
     parser.add_argument(
@@ -307,6 +456,18 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Store runtime data here instead of HMB_DATA_DIR or the default location.",
     )
+    parser.add_argument(
+        "--home",
+        default=None,
+        metavar="ABS_PATH",
+        help="Explicit absolute Hermes home for 'connect hermes'; never defaults to ~/.hermes.",
+    )
+    parser.add_argument(
+        "--url",
+        default=DEFAULT_HMB_URL,
+        metavar="LOOPBACK_URL",
+        help=f"Local HoldMyBeer app URL for issue briefs (default: {DEFAULT_HMB_URL}).",
+    )
     return parser
 
 
@@ -316,7 +477,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if getattr(args, "command", None) == "doctor":
+        if getattr(args, "client", None) is not None or getattr(args, "home", None) is not None or getattr(args, "url", DEFAULT_HMB_URL) != DEFAULT_HMB_URL:
+            print("holdmybeer: client names, --home and --url require 'connect hermes'", file=sys.stderr)
+            return EXIT_ERROR
         return cmd_doctor(args)
+    if getattr(args, "command", None) == "connect":
+        if getattr(args, "client", None) != "hermes":
+            print("holdmybeer: choose a client: connect hermes", file=sys.stderr)
+            return EXIT_ERROR
+        return cmd_connect_hermes(args)
+    if getattr(args, "client", None) is not None or getattr(args, "home", None) is not None or getattr(args, "url", DEFAULT_HMB_URL) != DEFAULT_HMB_URL:
+        print("holdmybeer: --home, --url and client names require 'connect hermes'", file=sys.stderr)
+        return EXIT_ERROR
     try:
         return cmd_launch(args)
     except (OSError, ImportError) as exc:

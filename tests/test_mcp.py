@@ -132,13 +132,17 @@ def test_stdio_mcp_lists_tools_and_returns_image_content(recording_store):
                 await client.initialize()
                 tools = await client.list_tools()
                 assert {tool.name for tool in tools.tools} == {
-                    "hmb_list_sessions", "hmb_get_session", "hmb_recording_frames", "hmb_propose_teaching", "hmb_procedure_history"
+                    "hmb_list_sessions", "hmb_get_session", "hmb_recording_frames", "hmb_propose_teaching", "hmb_procedure_history",
+                    "hmb_propose_issue_brief", "hmb_execute_approved_brief", "hmb_get_issue_brief"
                 }
                 annotations = {tool.name: tool.annotations for tool in tools.tools}
                 assert annotations["hmb_recording_frames"].readOnlyHint is True
                 assert annotations["hmb_procedure_history"].readOnlyHint is True
                 assert annotations["hmb_propose_teaching"].readOnlyHint is False
-                assert all(item.destructiveHint is False and item.openWorldHint is False for item in annotations.values())
+                assert all(item.destructiveHint is False for item in annotations.values())
+                assert annotations["hmb_execute_approved_brief"].openWorldHint is True
+                assert annotations["hmb_execute_approved_brief"].idempotentHint is True
+                assert all(item.openWorldHint is False for name, item in annotations.items() if name != "hmb_execute_approved_brief")
                 history = await client.call_tool('hmb_procedure_history', {'session_id': sid, 'revision': 1})
                 assert not history.isError
                 assert json.loads(history.content[0].text)['procedure'] == {'revision': 1, 'steps': []}

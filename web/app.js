@@ -323,6 +323,7 @@ async function selectSession(id) {
   }
   try {
     session = await api(`/api/sessions/${id}`);
+    document.dispatchEvent(new CustomEvent("hmb-session-selected"));
     guidedActive = session.id === guidedSessionId;
     $("reviewed").checked = false;
     $("reviewed").disabled = guidedActive && !guidedInspected;

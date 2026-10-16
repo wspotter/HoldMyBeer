@@ -197,6 +197,9 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     app = FastAPI(title="HoldMyBeer", docs_url=None, redoc_url=None)
     app.state.store = Store((data_dir or DATA_DIR).resolve())
     app.state.runner_lock = threading.Lock()
+    from .brief_jobs import BriefJobs, brief_router
+    app.state.brief_jobs = BriefJobs(app.state.store, app.state.runner_lock)
+    app.include_router(brief_router(app.state.brief_jobs))
 
     @app.middleware("http")
     async def local_only(request: Request, call_next):
@@ -223,7 +226,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         return await call_next(request)
 
     @app.get("/api/status")
-    def status(): return {"version": VERSION, "analysis": "manual", "runner": "bundled-browser", "procedure_runner": "reviewed-fixture-actions", "hermes": "scaffold"}
+    def status(): return {"version": VERSION, "analysis": "manual", "runner": "bundled-browser", "procedure_runner": "reviewed-fixture-actions", "supported_workflows": ["fixture", "github-issue-brief"], "hermes": "mcp-client"}
 
     @app.get("/api/sessions")
     def list_sessions():

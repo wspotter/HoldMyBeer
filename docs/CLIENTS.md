@@ -6,6 +6,23 @@ Install the source checkout in a virtual environment as shown in the README. `ff
 
 Use the absolute path to your environment's `holdmybeer-mcp` executable. These configuration examples follow the clients' documented stdio interfaces. Codex CLI has an actual temporary-configuration image/proposal receipt below. Claude Code, VS Code, desktop clients and permanent profile installs still need separate checks.
 
+## Hermes (opt-in isolated home)
+
+The CLI can add the HoldMyBeer MCP server to an explicitly selected Hermes home. Install HoldMyBeer in a virtual environment first, then run:
+
+```bash
+holdmybeer connect hermes \
+  --home /absolute/path/to/hermes-holdmybeer \
+  --data-dir /absolute/private/path/to/holdmybeer-data \
+  --url http://127.0.0.1:18940
+```
+
+The command prefers the `holdmybeer-mcp` executable beside its active Python environment, then falls back to `PATH`. It writes `mcp_servers.holdmybeer` with that executable, the selected data directory, and `HMB_URL` (default `http://127.0.0.1:18940`). The issue-brief tools send their requests to that local app URL, so start the HoldMyBeer app separately with the same data directory. `--url` accepts only an HTTP loopback root URL without credentials, path, query, or fragment; explicit ports must be 1–65535. The command does not start Hermes, start the workspace, or install a skill. Start Hermes with that same home when you want to use the connection, for example `HERMES_HOME=/absolute/path/to/hermes-holdmybeer hermes`.
+
+For safe editing without adding a YAML dependency, the installer accepts a missing config or a JSON-compatible `config.yaml` (JSON is valid YAML). It merges the one entry, preserves other parsed settings, and backs up an existing file before replacing it. If the file uses other YAML syntax, it prints the entry for manual merging; if `holdmybeer` already has different settings, it reports the conflict and leaves the file unchanged. `--home` and `--data-dir` must both be absolute paths; there is no default to `~/.hermes`.
+
+Use the Hermes server-name filter `hermes -t holdmybeer` to expose this MCP server; `-t mcp` does not select it on v0.22. On October 16, Hermes v0.22 loaded a fresh isolated home written by this installer and successfully called session listing, issue-brief proposal, approved execution and retained-result inspection. The local browser approved the exact plan between those native calls. The first search returned four issue links and a repeated installed run with new search words returned three different matching links. This verifies the shared MCP path, not the native status-only plugin, every client variant, or Hermes recording interpretation.
+
 ## Codex
 
 Add this table to your chosen Codex configuration, replacing the placeholder path:
@@ -58,8 +75,11 @@ Use [the teaching skill](../skills/teach-workflow/SKILL.md) as the task instruct
 - `hmb_procedure_history`: read an exact saved `revision`, or the latest 50 with `before_revision` pagination. This uses the same history as the teaching UI and cannot replace or execute a procedure. Reconnect an already running client to discover the new tool.
 - `hmb_recording_frames`: return up to six timestamped images, scaled within 1280 × 720, using bounded local decoding. MediaRecorder WebM without duration metadata is supported.
 - `hmb_propose_teaching`: save observations, questions and a validated procedure to the local proposal inbox. It cannot execute a procedure or replace the reviewed session.
+- `hmb_propose_issue_brief`: prepare a fixed public GitHub issue-search plan for review.
+- `hmb_execute_approved_brief`: start only the exact UI-approved plan; repeated calls return its existing receipt.
+- `hmb_get_issue_brief`: inspect durable job state and output. A running job is not a successful result.
 
-The user loads a proposal, reviews the exact actions, saves a revision and authorizes the local trial. There is no MCP execution tool. The current executable contract supports only the bundled draft fixture: upload a generated text file under a fresh filename, fill a caption, click an exact button and verify both fields in retained storage.
+For recording-based teaching, the user loads a proposal, reviews the exact actions, saves a revision and authorizes the local fixture trial. Its contract is generated text-file selection, caption entry, an exact button click and retained draft verification. MCP cannot execute that fixture procedure. The separate [issue brief](ISSUE-BRIEF.md) has a constrained execution tool and requires explicit UI approval of each immutable plan. No MCP tool can approve either workflow.
 
 ## Recorded client acceptance
 

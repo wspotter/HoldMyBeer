@@ -35,7 +35,7 @@ Actions execute in saved order against the bundled fixture. No arbitrary URL, se
 
 Missing targets stop with `needs_teaching`; no alternate locator is guessed. The repair flag is ignored in procedure mode. A run retains the exact procedure snapshot, mode, revision, steps, failure, draft ID and screenshot URL. Changing saved actions does not alter earlier evidence. Browser interactions have time limits; there is no mid-run cancellation interface yet.
 
-The UI invalidates its review checkbox when actions change. Saving a changed procedure advances its revision. A user then explicitly authorizes a local trial. The API remains a local developer interface; callers can explicitly request a run. The MCP bridge has no execution tool.
+The UI invalidates its review checkbox when actions change. Saving a changed procedure advances its revision. A user then explicitly authorizes a local trial. The API remains a local developer interface; callers can explicitly request a fixture run. The MCP bridge cannot execute a fixture procedure.
 
 Procedure saves are atomic with session changes. The current revision may be resubmitted only with identical contents; changed contents must use exactly the next revision. An explicit new revision may also retain the same steps. Stale, reused-with-different-content and skipped revisions return HTTP 409 without saving accompanying notes or answers. Notes-only and media updates preserve the latest procedure. Saved history is append-only through the application. For upgraded stores, history begins with the known current revision, labelled `legacy_current` with its retention time; overwritten older revisions cannot be reconstructed. Previous run snapshots remain available separately.
 
@@ -50,6 +50,12 @@ Procedure saves are atomic with session changes. The current revision may be res
 User answers remain bounded strings. Agent question/observation bundles may use up to 4000 characters; individual answers remain limited to 2000. Selected frames and session text returned through MCP enter the host agent's conversation and follow that host's data handling. HoldMyBeer runs no internal model and makes no independent remote inference requests.
 
 The native Hermes scaffold is separate and status-only. See [client configuration examples](CLIENTS.md) for the shared bridge. Client examples are not end-to-end installation receipts.
+
+## Named public issue brief
+
+The separate [GitHub issue brief](ISSUE-BRIEF.md) reads a public repository using a fixed, versioned browser procedure. It does not extend the recording-based action vocabulary above. `POST /api/issue-briefs` snapshots the exact repository, plain search words, limit and saved session revision. The UI approval exchange binds explicit consent to that immutable plan hash for ten minutes. `POST /api/issue-briefs/{id}/start` requires that approval and unchanged session revision; it returns the existing receipt when repeated. One shared browser lock covers both runner types.
+
+`GET /api/issue-briefs?session_id=...` lists retained jobs; `GET /api/issue-briefs/{id}` inspects one; `POST /api/issue-briefs/{id}/cancel` requests cooperative cancellation; `GET /api/issue-briefs/{id}/report` downloads a verified retained JSON report. Running jobs become `interrupted` on application restart and never replay automatically. The MCP adapter exposes proposal, approved execution and status tools for this named procedure, with no approval tool. Approval is a trusted-local-user boundary, not a sandbox against other local processes.
 
 ## Media items
 

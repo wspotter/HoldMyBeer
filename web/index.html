@@ -265,6 +265,30 @@ A fresh example, prepared for review.</textarea
             </div>
           </div>
         </section>
+        <section class="panel" aria-labelledby="issueBriefHeading" style="margin:24px 0;padding:24px">
+          <h2 id="issueBriefHeading">A real workflow: GitHub issue brief</h2>
+          <p>Read public open issues and retain a local report. This supported procedure never signs in or posts. It is separate from fixture practice and does not compile arbitrary recordings.</p>
+          <label for="briefRepository">Public repository (owner/name)</label>
+          <input id="briefRepository" value="wspotter/HoldMyBeer" maxlength="140" />
+          <label for="briefKeyword">Search words (optional)</label>
+          <input id="briefKeyword" placeholder="For example: teaching" maxlength="80" />
+          <label for="briefLimit">Maximum issues in report</label>
+          <input id="briefLimit" type="number" min="1" max="10" value="10" />
+          <button id="briefPrepare" type="button">Prepare issue procedure</button>
+          <button id="briefHistory" type="button">Load issue brief history</button>
+          <div id="briefPlan" hidden>
+            <h3>Review this exact procedure</h3>
+            <pre id="briefPlanText" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
+            <div id="briefApprovalControls">
+              <label><input id="briefConsent" type="checkbox" /> I approve these exact inputs and read-only actions.</label>
+              <button id="briefApprove" type="button" disabled>Approve procedure</button>
+            </div>
+          </div>
+          <button id="briefStart" type="button" disabled>Run approved issue brief</button>
+          <button id="briefCancel" type="button" disabled>Cancel issue brief</button>
+          <p id="briefStatus" role="status" aria-live="polite">Select or create a workflow, then prepare its issue brief.</p>
+          <div id="briefResult"></div>
+        </section>
         <footer>
           <span>HoldMyBeer / Experimental agent skill</span
           ><span>Built to be taught. Built to be questioned.</span>
@@ -273,5 +297,6 @@ A fresh example, prepared for review.</textarea
     </div>
     <div id="toast" role="status" aria-live="polite"></div>
     <script src="/app.js"></script>
+    <script src="/briefs.js"></script>
   </body>
 </html>

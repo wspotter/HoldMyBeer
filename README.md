@@ -2,7 +2,7 @@
 
 **Teach your agent by showing it.**
 
-Local teaching alpha `0.2.0a1`. The launcher and guided demo below are unreleased source changes; the existing prerelease predates them. See the [prerelease](https://github.com/wspotter/HoldMyBeer/releases/tag/v0.2.0a1) for the installable wheel and checksum.
+Local teaching alpha candidate `0.3.0a1`, not yet published. This candidate adds a launcher, guided practice task, explicit Hermes MCP setup and a read-only public GitHub issue brief. The [older prerelease](https://github.com/wspotter/HoldMyBeer/releases/tag/v0.2.0a1) predates these features.
 
 The goal: show an app workflow, let the agent ask questions, then watch it try and improve from your corrections. This first prototype supplies the recording workspace and a reproducible trial engine. HoldMyBeer is an early plugin/skill project for teaching and checking browser workflows with the agent you already use. The shared engine is intended to support MCP-compatible clients such as Codex, Claude Code and editor integrations; Hermes is the first adapter. A stdio MCP bridge now exposes local recordings and teaching proposals; see [client setup](docs/CLIENTS.md). Individual client installations still need end-to-end verification.
 
@@ -14,8 +14,9 @@ The goal: show an app workflow, let the agent ask questions, then watch it try a
 - One media item by default, with an optional queue of up to ten items. Reuse selects a retained fixture draft; each item gets its own receipt, and a failure stops the queue. The fixture reconstructs generated text files by filename; original video bytes are not retained.
 - Saved procedure revision history with overwrite protection, immutable trial snapshots, and a same-page practice task. Your connected agent can read the same saved revisions through MCP.
 - MCP tools return selected recording frames to your existing agent and place its observations, questions and validated procedure in a local review inbox.
+- A [GitHub issue brief](docs/ISSUE-BRIEF.md) runs a fixed browser procedure against a public repository: review and approve its exact inputs, search open issues, then retain matching titles, source links and a screenshot. Each new input set requires approval.
 
-The preview does **not** run its own AI model, automatically analyze a recording on capture, publish to social networks, or provide a production Hermes installation. Hermes support is an opt-in scaffold with one read-only status tool. The runner exercises the bundled fixture; it does not automate arbitrary websites.
+The preview does **not** run its own AI model, automatically analyze a recording on capture, publish to social networks, or automate arbitrary websites. The recording-based trial engine supports the bundled fixture; the GitHub issue brief is a separate named procedure, not an arbitrary recording compiler. Hermes connects through the opt-in MCP adapter. The older native plugin is a separate status-only scaffold.
 
 ## Try the local preview
 
@@ -48,6 +49,6 @@ This is an experimental preview. See [DEVELOPER.md](DEVELOPER.md) for the curren
 
 ## Help build the actual teaching loop
 
-The next substantial contributions are independent client installation tests, richer browser action contracts, and a verified workflow beyond the practice fixture. Start with the [architecture contract](docs/CONTRACT.md) and [contribution guide](CONTRIBUTING.md). No fine-tuning is required: the reusable artifact is a tested procedure.
+The next substantial contributions are independent client installation tests and richer reviewed browser action contracts. The issue brief provides a useful read-only workflow beyond practice, while turning a recording into a reliable arbitrary-app procedure remains unfinished. Start with the [architecture contract](docs/CONTRACT.md) and [contribution guide](CONTRIBUTING.md). No fine-tuning is required: the reusable artifact is a tested procedure.
 
 See [verified preview evidence](docs/VERIFICATION.md).

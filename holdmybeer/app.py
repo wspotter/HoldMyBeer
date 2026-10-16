@@ -154,7 +154,10 @@ class Store:
                        (data['id'], procedure['revision'], json.dumps(procedure), _now(), 'saved'))
 
     def update_session(self, ident: str, patch: dict):
-        with self.connect() as db:
+        from .training import is_mutable_training_session
+        with self.lock, self.connect() as db:
+            if not is_mutable_training_session(self, ident):
+                raise HTTPException(409, 'This training version is retained. Use Edit task to create a new draft.')
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT data FROM sessions WHERE id=?', (ident,)).fetchone()
             if row is None:
@@ -200,6 +203,10 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     from .brief_jobs import BriefJobs, brief_router
     app.state.brief_jobs = BriefJobs(app.state.store, app.state.runner_lock)
     app.include_router(brief_router(app.state.brief_jobs))
+    from .teaching_review import teaching_router
+    app.include_router(teaching_router(app.state.store))
+    from .training import training_router
+    app.include_router(training_router(app.state.store))
 
     @app.middleware("http")
     async def local_only(request: Request, call_next):
@@ -294,12 +301,20 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                 out.flush()
                 os.fsync(out.fileno())
             if total == 0: raise HTTPException(422, "empty media")
-            os.replace(temp, target)
-            if alternate.parent == app.state.store.artifacts: alternate.unlink(missing_ok=True)
+            with app.state.store.lock:
+                from .training import is_mutable_training_session
+                if not is_mutable_training_session(app.state.store, session_id):
+                    raise HTTPException(409, 'This training version is retained. Use Edit task to create a new draft.')
+                fresh = app.state.store.get_session(session_id)
+                patch = {'media_url': f'/api/sessions/{session_id}/media', 'media_revision': str(uuid.uuid4())}
+                if 'teaching_recording_confirmed' in fresh.get('answers', {}):
+                    patch['answers'] = {**fresh['answers'], 'teaching_recording_confirmed': 'no'}
+                os.replace(temp, target)
+                if alternate.parent == app.state.store.artifacts: alternate.unlink(missing_ok=True)
+                app.state.store.update_session(session_id, patch)
         finally:
             temp.unlink(missing_ok=True)
         data["media_url"] = f"/api/sessions/{session_id}/media"
-        app.state.store.update_session(session_id, {'media_url': data['media_url']})
         return {"url": data["media_url"]}
 
     @app.get("/api/sessions/{session_id}/media")

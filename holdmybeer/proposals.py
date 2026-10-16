@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import sqlite3
@@ -60,6 +61,8 @@ class TeachingProposal(StrictModel):
     questions: list[TeachingQuestion] = Field(max_length=MAX_QUESTIONS)
     procedure: Procedure
     created_at: str
+    source_media_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    source_context_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
     @field_validator("created_at")
     @classmethod
@@ -114,6 +117,35 @@ def _session_exists(root: Path, session_id: str) -> bool:
         return db.execute("SELECT 1 FROM sessions WHERE id=?", (session_id,)).fetchone() is not None
 
 
+def teaching_source(root: Path, session_id: str) -> dict[str, str | None]:
+    """Fingerprint current inputs, not a claim that an assistant inspected them."""
+    sid = _session_id(session_id)
+    with sqlite3.connect((root.resolve() / "holdmybeer.sqlite3").as_uri() + "?mode=ro", uri=True, timeout=5) as db:
+        row = db.execute("SELECT data FROM sessions WHERE id=?", (sid,)).fetchone()
+    if row is None:
+        raise ValueError("session not found")
+    data = json.loads(row[0])
+    context = {key: data.get(key, "") for key in ("title", "notes", "media_revision")}
+    context["answers"] = {key: value for key, value in data.get("answers", {}).items()
+                          if key not in {"teaching_approval", "teaching_recording_confirmed"}}
+    digest = hashlib.sha256(json.dumps(context, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    artifacts = (root.resolve() / "artifacts").resolve()
+    media_digest = None
+    for suffix in (".webm", ".mp4"):
+        path = artifacts / (sid + suffix)
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 100 * 1024 * 1024:
+            continue
+        if path.resolve().parent != artifacts:
+            continue
+        with path.open("rb") as source:
+            hasher = hashlib.sha256()
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                hasher.update(chunk)
+        media_digest = hasher.hexdigest()
+        break
+    return {"source_media_sha256": media_digest, "source_context_sha256": digest}
+
+
 def _validated_file(path: Path, session_id: str) -> dict[str, Any] | None:
     try:
         resolved = path.resolve(strict=True)
@@ -154,6 +186,7 @@ def create_proposal(root: Path, session_id: str, observations: list[dict], quest
     proposal = _proposal_from_input(session_id, observations, questions, procedure)
     if not _session_exists(root, proposal.session_id):
         raise ValueError("session not found")
+    proposal = proposal.model_copy(update=teaching_source(root, proposal.session_id))
     artifacts = (root.resolve() / "artifacts").resolve()
     artifacts.mkdir(parents=True, exist_ok=True, mode=0o700)
     target = artifacts / f"{proposal.session_id}.{proposal.id}.proposal.json"

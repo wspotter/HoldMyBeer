@@ -19,7 +19,7 @@
     $("directedForm").hidden = stage !== "record";
     $("directedReviewPanel").hidden = stage !== "review";
     if (stage === "app") $("trainingAppTitle").focus();
-    if (stage === "task") $("trainingTaskTitle").focus();
+    if (stage === "task") ($("trainingTaskCreateForm").hidden ? $("trainingTaskTitle") : $("trainingTaskName")).focus();
     if (stage === "description") $("trainingDescriptionTitle").focus();
   }
   document.addEventListener("hmb-training-record", () => {
@@ -91,7 +91,7 @@
     $("trainingTaskCreateForm").reset(); $("trainingTaskCreateForm").hidden = true;
     $("trainingTaskCreateToggle").hidden = false; $("trainingTaskCreateToggle").textContent = "Create a task";
     $("trainingTaskContinue").disabled = true;
-    if (!tasks.length) add("p", "No tasks saved for this app yet. Create the first one.", list, "task-status");
+    $("trainingTaskTitle").textContent = tasks.length ? "2. Choose a task" : "2. Create your first task";
     for (const task of tasks) {
       const label = document.createElement("label"); label.className = "training-task-choice";
       const radio = document.createElement("input"); radio.type = "radio"; radio.name = "training-task-choice"; radio.value = task.id;
@@ -102,8 +102,9 @@
       const version = task.latest_version ? `Training version ${task.latest_version}${task.working_version ? ` · Practice-tested version ${task.working_version}` : " · No tested version"}` : "No saved version";
       add("small", version, copy); label.append(copy); list.append(label);
     }
-    $("trainingTaskCreateToggle").hidden = false;
-    $("trainingTaskContinue").hidden = false;
+    $("trainingTaskCreateForm").hidden = tasks.length > 0;
+    $("trainingTaskCreateToggle").hidden = !tasks.length;
+    $("trainingTaskContinue").hidden = !tasks.length;
     $("trainingTaskStatus").textContent = tasks.length ? "Choose a task or create a separate one." : "Each task has its own recording and version history.";
   }
   function add(tag, value, parent, className) { const element = document.createElement(tag); element.textContent = value; if (className) element.className = className; parent.append(element); return element; }

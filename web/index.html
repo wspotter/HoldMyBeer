@@ -25,7 +25,7 @@
           <span class="task-label">START WITH YOUR TASK</span>
           <h2 id="directedTitle">What should I learn?</h2>
           <p>Choose an app, name a task, describe what “done” looks like, then record one complete example.</p>
-          <button class="primary" id="directedBegin" type="button">I’ll show you</button>
+          <button class="primary" id="directedBegin" type="button">Show me how</button>
           <small>Preview: recordings are saved; assistant review needs a connected agent. Repeating your task is not available yet. Approval confirms understanding only.</small>
         </section>
         <p class="simple-footnote">Your recording stays in this local workspace.</p>
@@ -66,10 +66,10 @@
           <p id="trainingDescriptionText" class="compact-copy"></p>
           <dl id="trainingVersionInfo" class="training-version-info"></dl>
           <div class="training-version-actions">
-            <button id="trainingEdit" class="quiet" type="button">Edit task · new version</button>
+            <button id="trainingEdit" class="quiet" type="button">Update this task</button>
             <label for="trainingHistory">Earlier versions</label><select id="trainingHistory"></select>
             <button id="trainingViewVersion" class="quiet" type="button" disabled>View selected version</button>
-            <button id="trainingRestore" class="quiet" type="button" disabled>Restore selected version</button>
+            <button id="trainingRestore" class="quiet" type="button" disabled>Use this as a starting point</button>
           </div>
           <form id="trainingEditForm" hidden>
             <label for="trainingEditName">Task name</label><input id="trainingEditName" maxlength="160" required />
@@ -77,7 +77,7 @@
             <label for="trainingEditDone">How will you know it is done?</label><textarea id="trainingEditDone" maxlength="1000" required></textarea>
             <button class="primary" type="submit">Save new version</button><button id="trainingEditCancel" class="quiet" type="button">Cancel edit</button>
           </form>
-          <button id="trainingRecordContinue" class="primary" type="button">Continue to recording</button>
+          <button id="trainingRecordContinue" class="primary" type="button">Record an example</button>
           <p id="trainingDescriptionStatus" class="task-status" role="status" aria-live="polite"></p>
         </section>
         <form id="directedForm" class="task-surface" hidden>
@@ -94,12 +94,12 @@
                 <button class="quiet" id="directedStop" type="button" hidden>Done showing</button>
                 <label id="directedImportLabel" class="file-button directed-import"><span>Import video</span><input id="directedImport" type="file" accept="video/webm,video/mp4" /></label>
               </div>
-              <p id="directedReplacementNote" class="task-status" hidden>This replaces the video in this draft. To keep the current example, create a new version from Task details first.</p>
+              <p id="directedReplacementNote" class="task-status" hidden>This replaces the recorded example in this training version. To keep the current example, create a new version from Task details first.</p>
               <button id="directedRetryUpload" class="quiet" type="button" hidden>Retry saving this video</button>
               <video id="directedVideo" controls playsinline hidden></video>
             </div>
             <label class="check"><input id="directedComplete" type="checkbox" /> This video shows one complete example of the task.</label>
-            <button id="directedReview" class="primary" type="button" disabled>Review understanding</button>
+            <button id="directedReview" class="primary" type="button" disabled>Review what it learned</button>
           </section>
         </form>
         <p id="directedStatus" class="task-status" role="status" aria-live="polite">Describe the task and its done condition.</p>

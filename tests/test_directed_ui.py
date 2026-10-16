@@ -11,7 +11,7 @@ from test_backend import server
 
 
 def create_app_and_task(page, app_name="Shop", task_name="Save a request"):
-    page.get_by_role("button", name="I’ll show you", exact=True).click()
+    page.get_by_role("button", name="Show me how", exact=True).click()
     expect(page.locator("#trainingAppStage")).to_be_visible()
     expect(page.locator("#trainingAppCreateForm")).to_be_visible()
     page.locator("#trainingAppName").fill(app_name)
@@ -44,7 +44,7 @@ def test_empty_home_requires_app_then_keeps_tasks_separate(server):
             page = browser.new_page()
             page.goto(base)
             expect(page.get_by_role("heading", name="Teach an assistant your repeat tasks.")).to_be_visible()
-            expect(page.get_by_role("button", name="I’ll show you", exact=True)).to_be_visible()
+            expect(page.get_by_role("button", name="Show me how", exact=True)).to_be_visible()
             assert httpx.get(base + "/api/sessions").json()["sessions"] == []
 
             create_app_and_task(page, "Orders", "Save an order")
@@ -53,7 +53,7 @@ def test_empty_home_requires_app_then_keeps_tasks_separate(server):
             # session is created only when the user explicitly continues.
             app_id = httpx.get(base + "/api/training/apps").json()["apps"][0]["id"]
             page.locator("#directedView [data-view=home]").click()
-            page.get_by_role("button", name="I’ll show you", exact=True).click()
+            page.get_by_role("button", name="Show me how", exact=True).click()
             expect(page.locator("#trainingAppStage")).to_be_visible()
             page.locator("#trainingAppSelect").select_option(app_id)
             page.locator("#trainingAppContinue").click()
@@ -178,7 +178,7 @@ def test_imported_recording_waiting_review_saved_restore_and_approval_never_runs
             expect(page.locator("#trainingDescriptionStage")).to_be_visible()
             page.locator("#trainingRecordContinue").click()
             expect(page.locator("#directedRecordStage")).to_be_visible()
-            expect(page.locator("#directedVersionSummary")).to_contain_text("Working version 1. Read-only")
+            expect(page.locator("#directedVersionSummary")).to_contain_text("Last tested version 1. Read-only")
             expect(page.locator("#directedVideo")).to_be_visible()
             page.wait_for_function("document.querySelector('#directedVideo').readyState >= 2")
             expect(page.locator("#directedImport")).to_be_disabled()
@@ -215,7 +215,7 @@ def test_imported_recording_waiting_review_saved_restore_and_approval_never_runs
             page.locator("#trainingHistory").select_option("1")
             page.locator("#trainingViewVersion").click()
             expect(page.locator("#directedRecordStage")).to_be_visible()
-            expect(page.locator("#directedVersionSummary")).to_contain_text("Working version 1. Read-only")
+            expect(page.locator("#directedVersionSummary")).to_contain_text("Last tested version 1. Read-only")
             expect(page.locator("#directedVideo")).to_be_visible()
             page.wait_for_function("document.querySelector('#directedVideo').readyState >= 2")
             expect(page.locator("#directedReview")).to_have_text("View saved understanding")
@@ -237,7 +237,7 @@ def test_imported_recording_waiting_review_saved_restore_and_approval_never_runs
 
             page.locator("#trainingHistory").select_option("1")
             page.locator("#trainingRestore").click()
-            expect(page.locator("#trainingDescriptionStatus")).to_contain_text("Restored as draft version 3")
+            expect(page.locator("#trainingDescriptionStatus")).to_contain_text("Copied as training version 3")
             restored = httpx.get(base + f"/api/training/tasks/{task_id}").json()
             sid3 = restored["session"]["id"]
             assert restored["latest_version"] == 3

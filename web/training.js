@@ -99,7 +99,7 @@
       label.append(radio);
       const copy = document.createElement("span"); add("strong", task.name, copy);
       if (task.description) add("span", task.description, copy);
-      const version = task.latest_version ? `Draft version ${task.latest_version}${task.working_version ? ` · Practice-tested version ${task.working_version}` : " · No tested version"}` : "No saved version";
+      const version = task.latest_version ? `Training version ${task.latest_version}${task.working_version ? ` · Practice-tested version ${task.working_version}` : " · No tested version"}` : "No saved version";
       add("small", version, copy); label.append(copy); list.append(label);
     }
     $("trainingTaskCreateToggle").hidden = false;
@@ -157,13 +157,13 @@
   function renderVersionHistory(task) {
     const versions = task.versions || [], latest = task.latest_version, working = task.working_version;
     const info = $("trainingVersionInfo"); info.replaceChildren();
-    add("dt", "Latest draft", info); add("dd", latest ? `Version ${latest}` : "None", info);
-    add("dt", "Working version", info); add("dd", working ? `Version ${working} · tested in the practice app only` : "None tested", info);
+    add("dt", "Current training", info); add("dd", latest ? `Version ${latest}` : "None", info);
+    add("dt", "Last tested version", info); add("dd", working ? `Version ${working} · tested in the practice app only` : "None tested", info);
     add("dt", "Availability", info); add("dd", "Recording and review are supported. General recorded-app replay is not available.", info);
     const history = $("trainingHistory"); history.replaceChildren();
     for (const version of versions.filter(item => item.version !== latest).sort((a,b) => b.version - a.version)) {
       const option = document.createElement("option"); option.value = version.version;
-      option.textContent = `Version ${version.version}${version.version === working ? " · working" : ""}${version.parent_version ? ` · from ${version.parent_version}` : ""}`;
+      option.textContent = `Version ${version.version}${version.version === working ? " · last tested" : ""}${version.parent_version ? ` · from ${version.parent_version}` : ""}`;
       history.append(option);
     }
     $("trainingRestore").disabled = !history.options.length;
@@ -186,12 +186,12 @@
     document.dispatchEvent(new CustomEvent("hmb-training-session", {detail:{task, session:task.session}}));
   }
   $("trainingRecordContinue").onclick = () => {
-    if (!detail?.session?.id) { setStatus("trainingDescriptionStatus", "This task has no saved draft session yet."); return; }
+    if (!detail?.session?.id) { setStatus("trainingDescriptionStatus", "This task has no saved training version yet."); return; }
     document.dispatchEvent(new CustomEvent("hmb-training-record"));
   };
   $("trainingEdit").onclick = async () => {
     if (busy || !detail?.latest_version) return;
-    busy = true; $("trainingEdit").disabled = true; setStatus("trainingDescriptionStatus", "Creating a separate draft version…");
+    busy = true; $("trainingEdit").disabled = true; setStatus("trainingDescriptionStatus", "Creating a separate training version…");
     try {
       detail = await trainingApi(`/api/training/tasks/${detail.id}/edit`, {method:"POST", body:JSON.stringify({base_version:detail.latest_version})});
       const answers = detail.session?.answers || {};
@@ -206,7 +206,7 @@
   };
   $("trainingEditForm").onsubmit = async event => {
     event.preventDefault(); if (busy || !event.currentTarget.reportValidity()) return;
-    busy = true; setStatus("trainingDescriptionStatus", "Saving this draft version…");
+    busy = true; setStatus("trainingDescriptionStatus", "Saving this training version…");
     try {
       const fresh = await trainingApi(`/api/sessions/${detail.session.id}`);
       const answers = {...(fresh.answers || {}), teaching_task_name:$("trainingEditName").value.trim(), teaching_goal:$("trainingEditGoal").value.trim(), teaching_done:$("trainingEditDone").value.trim()};
@@ -214,7 +214,7 @@
       detail = await trainingApi(`/api/training/tasks/${detail.id}`);
       $("trainingEditForm").hidden = true; $("trainingRecordContinue").hidden = false; taskCopy(detail); renderVersionHistory(detail);
       document.dispatchEvent(new CustomEvent("hmb-training-session", {detail:{task:detail, session:detail.session}}));
-      setStatus("trainingDescriptionStatus", `Saved draft version ${detail.latest_version}. The previous working version remains available.`);
+      setStatus("trainingDescriptionStatus", `Saved training version ${detail.latest_version}. The previous tested version remains available.`);
     } catch (error) { setStatus("trainingDescriptionStatus", `Could not save version. ${error.message}`); }
     finally { busy = false; }
   };
@@ -241,12 +241,12 @@
   };
   $("trainingRestore").onclick = async () => {
     if (busy || !detail || !$("trainingHistory").value) return;
-    busy = true; $("trainingRestore").disabled = true; setStatus("trainingDescriptionStatus", "Copying that version into a new draft…");
+    busy = true; $("trainingRestore").disabled = true; setStatus("trainingDescriptionStatus", "Copying that version into a new training version…");
     try {
       detail = await trainingApi(`/api/training/tasks/${detail.id}/restore`, {method:"POST", body:JSON.stringify({base_version:detail.latest_version, source_version:Number($("trainingHistory").value)})});
       taskCopy(detail); renderVersionHistory(detail);
       document.dispatchEvent(new CustomEvent("hmb-training-session", {detail:{task:detail, session:detail.session}}));
-      setStatus("trainingDescriptionStatus", `Restored as draft version ${detail.latest_version}. It has no inherited approval or trial proof.`);
+      setStatus("trainingDescriptionStatus", `Copied as training version ${detail.latest_version}. Review and test it again before using it.`);
     } catch (error) { setStatus("trainingDescriptionStatus", `Could not restore version. ${error.message}`); }
     finally { busy = false; $("trainingRestore").disabled = !$("trainingHistory").options.length; }
   };
@@ -267,7 +267,7 @@
         if (!app.tasks.length) add("p", "No tasks saved for this app.", list, "task-status");
         for (const task of app.tasks) {
           taskCount += 1;
-          const button = add("button", `${task.name} · draft ${task.latest_version || "—"}${task.working_version ? ` · practice-tested ${task.working_version}` : " · no tested version"}`, list, "saved-task");
+          const button = add("button", `${task.name} · training version ${task.latest_version || "—"}${task.working_version ? ` · practice-tested ${task.working_version}` : " · no tested version"}`, list, "saved-task");
           button.type = "button";
           button.onclick = () => { window.hmbShowView("directed"); document.dispatchEvent(new CustomEvent("hmb-resume-training-task", {detail:task.id})); };
         }

@@ -28,7 +28,7 @@
     for (const id of ["directedEditDetails", "directedRecord", "directedReview"]) $(id).disabled = locked || (readOnly && id === "directedRecord") || (id === "directedReview" && (readOnly ? !current?.media_url : (!completeMedia || !$("directedComplete").checked)));
     $("directedImport").disabled = locked || readOnly;
     $("directedComplete").disabled = locked || readOnly || !completeMedia;
-    $("directedReview").textContent = readOnly ? "View saved understanding" : "Review understanding";
+    $("directedReview").textContent = readOnly ? "View saved understanding" : "Review what it learned";
     const replacing = !!current?.media_url;
     $("directedRecord").textContent = replacing ? "Replace recording" : "Record screen";
     $("directedImportLabel").querySelector("span").textContent = replacing ? "Import replacement" : "Import video";
@@ -43,8 +43,8 @@
       const name = trainingTask?.name || current?.answers?.teaching_task_name || "Task";
       $("directedTaskSummary").textContent = `${name} · ${$("directedGoal").value.trim()} · Done when: ${$("directedDone").value.trim()}`;
       const version = current?.training?.version || trainingTask?.latest_version || 1;
-      const label = historicalView ? "Historical" : readOnly ? "Working" : "Draft";
-      $("directedVersionSummary").textContent = `${label} version ${version}. ${readOnly ? "Read-only. Return to current task details to edit or create a draft." : "Recording is saved only to this version."}`;
+      const label = historicalView ? "Historical" : readOnly ? "Last tested" : "Training";
+      $("directedVersionSummary").textContent = `${label} version ${version}. ${readOnly ? "Read-only. Return to current task details to edit or create a new training version." : "Recording is saved only to this version."}`;
     }
   }
   function detailsChanged() {
@@ -58,7 +58,7 @@
     current = await request(`/api/sessions/${current.id}`);
     const name = trainingTask?.name || current.answers?.teaching_task_name || "Task";
     if ((current.answers?.teaching_task_name || "Task") === name && current.answers?.teaching_goal === goal && current.answers?.teaching_done === done) return current;
-    if (readOnly) throw new Error("This working version is read-only. Edit the task to create a new draft first.");
+    if (readOnly) throw new Error("This tested version is read-only. Edit the task to create a new training version first.");
     const answers = {...(current.answers || {}), teaching_task_name:name, teaching_goal:goal, teaching_done:done};
     current = await request(`/api/sessions/${current.id}`, {method:"PUT", body:JSON.stringify({title:`Training · ${answers.teaching_task_name}`, answers})});
     return current;
@@ -207,7 +207,7 @@
       };
     }
     if (status === "approved") add("p", "Nothing has been executed.", panel);
-    if (readOnly) add("p", "This tested version is read-only. You can view its saved understanding; edit the task to create a new draft.", panel, "task-status");
+    if (readOnly) add("p", "This tested version is read-only. You can view its saved understanding; edit the task to create a new training version.", panel, "task-status");
     title.focus();
     say("Review updated.");
   }
@@ -244,7 +244,7 @@
         catch (error) { completeMedia = false; say(`Saved video could not be played. ${error.message}`); }
       } else say("Record or import one complete example.");
       showStage("record"); $("directedRecordTitle").focus();
-      if (readOnly) say(`${historicalView ? "Historical" : "Working"} version is read-only. You can review its saved video; return to current task details to edit or create a draft.`);
+      if (readOnly) say(`${historicalView ? "Historical" : "Last tested"} version is read-only. You can review its saved video; return to current task details to edit or create a new training version.`);
     } catch (error) { say(`Could not open this version. ${error.message}`); document.dispatchEvent(new CustomEvent("hmb-training-back-to-details")); }
     finally { busy = false; refreshReady(); }
   });

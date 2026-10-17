@@ -415,6 +415,7 @@
   let ocTimerInterval = null;
   let ocStartTime = 0;
   let ocSession = null;
+  let ocNativeSessionId = null;
   let ocWindowTitle = "";
 
   function ocStatus(msg) {
@@ -426,25 +427,51 @@
     if (ocStream) { ocStream.getTracks().forEach(t => t.stop()); ocStream = null; }
   }
 
+  if ($("mcModalClose")) {
+    $("mcModalClose").onclick = () => {
+      if ($("mcModalOverlay")) $("mcModalOverlay").hidden = true;
+    };
+  }
+
   function renderMultipleChoiceUI(container, sessionId, reviewData) {
-    container.replaceChildren();
-    container.hidden = false;
-
-    add("p", "AI AUTO-REVIEW · TAP OPTIONS BELOW (NO TYPING NEEDED)", container, "eyebrow");
-    const heading = add("h2", "Here’s what I saw — tap to confirm", container);
-    heading.tabIndex = -1;
-
-    if (reviewData.observations?.length) {
-      for (const obs of reviewData.observations) {
-        add("p", `• ${obs.text}`, container, "compact-copy");
-      }
+    const useModal = Boolean($("mcModalOverlay") && $("mcModalBody") && container?.id === "oneClickReviewCard");
+    const target = useModal ? $("mcModalBody") : container;
+    if (useModal) {
+      $("mcModalOverlay").hidden = false;
+      container.hidden = false;
+      container.replaceChildren();
+      const reopen = add("button", "✨ Open AI Review Popup", container, "quiet");
+      reopen.type = "button";
+      reopen.onclick = () => { $("mcModalOverlay").hidden = false; };
+    } else {
+      container.hidden = false;
     }
 
-    // 1-Tap Task Name Pills
+    target.replaceChildren();
+    const heading = add("h2", "Here’s what I saw — tap to confirm", target);
+    heading.style.fontSize = "19px";
+    heading.style.margin = "0 0 10px";
+    heading.tabIndex = -1;
+
+    // Compact Top Grid: Video Preview (left) + Task Name Pills (right)
+    const topGrid = document.createElement("div");
+    topGrid.className = "mc-top-grid";
+    const vidWrap = document.createElement("div");
+    const vid = document.createElement("video");
+    vid.controls = true;
+    vid.playsInline = true;
+    vid.preload = "auto";
+    const mediaUrl = reviewData.media_url || `/api/sessions/${sessionId}/media`;
+    vid.src = `${mediaUrl}?t=${Date.now()}`;
+    vidWrap.append(vid);
+    topGrid.append(vidWrap);
+
     let selectedName = reviewData.task_name || (reviewData.suggested_names?.[0]) || "Quick Workflow";
-    add("h3", "Task Name (tap to switch):", container);
+    const rightCol = document.createElement("div");
+    add("small", "Task Name (tap pill to switch):", rightCol);
     const pillRow = document.createElement("div");
     pillRow.className = "mc-pill-row";
+    pillRow.style.margin = "6px 0 0";
     const namePills = [];
     for (const candidate of (reviewData.suggested_names || [selectedName])) {
       const pill = document.createElement("button");
@@ -458,49 +485,81 @@
       namePills.push(pill);
       pillRow.append(pill);
     }
-    container.append(pillRow);
+    rightCol.append(pillRow);
+    topGrid.append(rightCol);
+    target.append(topGrid);
 
-    // Multiple-Choice Question Cards
+    // Step-by-Step Single Question Card (1 question visible at a time; auto-advances on tap)
+    const questions = reviewData.multiple_choice_questions || [];
     const selectedChoices = {};
-    for (const q of (reviewData.multiple_choice_questions || [])) {
+    for (const q of questions) {
       selectedChoices[q.id] = q.selected || q.options?.[0]?.id || "";
+    }
+
+    let currentStep = 0;
+    const stepHolder = document.createElement("div");
+    target.append(stepHolder);
+
+    function renderStepQuestion() {
+      stepHolder.replaceChildren();
+      if (!questions.length) return;
+      const q = questions[currentStep];
+      if ($("mcStepBadge")) {
+        $("mcStepBadge").textContent = `AI AUTO-REVIEW · QUESTION ${currentStep + 1} OF ${questions.length}`;
+      }
       const card = document.createElement("div");
       card.className = "mc-question-card";
+      card.style.margin = "8px 0";
       add("h3", q.question, card);
       const list = document.createElement("div");
       list.className = "mc-options-list";
-      const optButtons = [];
       for (const opt of (q.options || [])) {
         const btn = document.createElement("button");
         btn.type = "button";
         const isSel = opt.id === selectedChoices[q.id];
         btn.className = "mc-option-btn" + (isSel ? " selected" : "");
-        btn.setAttribute("aria-pressed", isSel ? "true" : "false");
         btn.textContent = `${isSel ? "🔘" : "⚪"} ${opt.label}`;
         btn.onclick = () => {
           selectedChoices[q.id] = opt.id;
-          for (const item of optButtons) {
-            const active = item.optId === opt.id;
-            item.btn.classList.toggle("selected", active);
-            item.btn.setAttribute("aria-pressed", active ? "true" : "false");
-            item.btn.textContent = `${active ? "🔘" : "⚪"} ${item.label}`;
+          if (currentStep < questions.length - 1) {
+            currentStep += 1;
+            renderStepQuestion();
+          } else {
+            renderStepQuestion();
           }
         };
-        optButtons.push({optId: opt.id, label: opt.label, btn});
         list.append(btn);
       }
       card.append(list);
-      container.append(card);
+
+      const nav = document.createElement("div");
+      nav.className = "mc-step-nav";
+      const prevBtn = add("button", "← Previous", nav, "quiet");
+      prevBtn.type = "button";
+      prevBtn.disabled = currentStep === 0;
+      prevBtn.onclick = () => { if (currentStep > 0) { currentStep -= 1; renderStepQuestion(); } };
+
+      const stepInfo = add("small", `Step ${currentStep + 1} of ${questions.length} (tap any option to advance)`, nav);
+      stepInfo.style.margin = "0";
+
+      const nextBtn = add("button", currentStep < questions.length - 1 ? "Next →" : "Done", nav, "quiet");
+      nextBtn.type = "button";
+      nextBtn.disabled = currentStep >= questions.length - 1;
+      nextBtn.onclick = () => { if (currentStep < questions.length - 1) { currentStep += 1; renderStepQuestion(); } };
+      card.append(nav);
+      stepHolder.append(card);
     }
 
-    const approveBtn = add("button", "✅ Confirm Answers & Test in Safe Sandbox", container, "mc-approve-btn");
+    renderStepQuestion();
+
+    const approveBtn = add("button", "✅ Confirm Answers & Test in Safe Sandbox", target, "mc-approve-btn");
     approveBtn.id = "oneClickApproveBtn";
     approveBtn.type = "button";
 
     const resultBox = document.createElement("div");
     resultBox.id = "oneClickResultBox";
     resultBox.hidden = true;
-    container.append(resultBox);
+    target.append(resultBox);
 
     approveBtn.onclick = async () => {
       approveBtn.disabled = true;
@@ -514,6 +573,7 @@
             run_sandbox: true,
           }),
         });
+        stepHolder.hidden = true;
         resultBox.replaceChildren();
         resultBox.className = "mc-verified-banner";
         resultBox.hidden = false;
@@ -527,24 +587,10 @@
         if (filesAfter.length) {
           add("p", `Sandbox output files verified (real files untouched): ${filesAfter.join(", ")}`, resultBox, "task-status");
         }
-        const exportBtn = add("button", "📦 Export Universal AI Skill (Claude / Cursor / Ollie / Otto)", resultBox, "quiet");
-        exportBtn.type = "button";
-        exportBtn.style.marginTop = "10px";
-        exportBtn.onclick = async () => {
-          exportBtn.disabled = true;
-          try {
-            const exp = await request(`/api/tasks/${encodeURIComponent(res.task_id)}/export-skill`, {
-              method: "POST",
-              body: JSON.stringify({}),
-            });
-            add("p", `Exported portable SKILL.md bundle to: ${exp.skill_dir}`, resultBox, "task-status");
-          } catch (e) {
-            add("p", `Export error: ${e.message}`, resultBox, "task-status");
-          } finally {
-            exportBtn.disabled = false;
-          }
+        approveBtn.textContent = "✅ Done — Close Popup";
+        approveBtn.onclick = () => {
+          if ($("mcModalOverlay")) $("mcModalOverlay").hidden = true;
         };
-        approveBtn.textContent = "✅ Choices Confirmed (Tap to Re-Run Sandbox)";
         ocStatus(`Approved "${res.task_name}" and verified in Safe Sandbox!`);
       } catch (err) {
         ocStatus(`Could not confirm choices: ${err.message}`);
@@ -557,7 +603,7 @@
   }
 
   async function processOneClickBlob(blob, windowTitle, durationSec) {
-    ocStatus("Uploading recording & running AI Auto-Review…");
+    ocStatus("Saving recording & opening AI Review popup…");
     try {
       if (!ocSession) {
         const qr = await request("/api/quick-record", {
@@ -566,15 +612,12 @@
         });
         ocSession = qr.session;
       }
-      const mediaRes = await request(`/api/sessions/${ocSession.id}/media`, {
+      const cleanMime = (blob.type || "video/webm").split(";")[0];
+      await request(`/api/sessions/${ocSession.id}/media`, {
         method: "POST",
-        headers: {"Content-Type": blob.type || "video/webm"},
+        headers: {"Content-Type": cleanMime},
         body: blob,
       });
-      if ($("oneClickVideo")) {
-        $("oneClickVideo").src = `${mediaRes.url}?t=${Date.now()}`;
-        $("oneClickVideo").hidden = false;
-      }
       const reviewData = await request(`/api/sessions/${ocSession.id}/auto-review`, {
         method: "POST",
         body: JSON.stringify({
@@ -582,7 +625,7 @@
           duration_seconds: durationSec || 2.0,
         }),
       });
-      ocStatus("AI review ready — tap your answers below!");
+      ocStatus("AI review ready.");
       if ($("oneClickReviewCard")) {
         renderMultipleChoiceUI($("oneClickReviewCard"), ocSession.id, reviewData);
       }
@@ -591,34 +634,54 @@
     }
   }
 
+  function startTimerTick() {
+    ocStartTime = Date.now();
+    if ($("oneClickTimer")) $("oneClickTimer").textContent = "00:00";
+    if (ocTimerInterval) clearInterval(ocTimerInterval);
+    ocTimerInterval = setInterval(() => {
+      const sec = Math.max(0, Math.floor((Date.now() - ocStartTime) / 1000));
+      const mm = String(Math.floor(sec / 60)).padStart(2, "0");
+      const ss = String(sec % 60).padStart(2, "0");
+      if ($("oneClickTimer")) $("oneClickTimer").textContent = `${mm}:${ss}`;
+    }, 500);
+  }
+
   if ($("oneClickRecordBtn")) {
     $("oneClickRecordBtn").onclick = async () => {
-      if (ocRecorder?.state === "recording") return;
+      if (ocRecorder?.state === "recording" || ocNativeSessionId) return;
+      try {
+        // 1. Try 1-Click Native Desktop Capture first (bypasses Chrome Share Screen popup completely!)
+        const nativeRes = await request("/api/native-record/start", {method: "POST", body: JSON.stringify({})});
+        if (nativeRes && nativeRes.supported && nativeRes.session_id) {
+          ocNativeSessionId = nativeRes.session_id;
+          startTimerTick();
+          $("oneClickRecordBtn").hidden = true;
+          $("oneClickStopBtn").hidden = false;
+          ocStatus("Recording your desktop now (no browser popup needed) — click Stop Recording when done.");
+          return;
+        }
+      } catch {
+        /* Fall back to browser capture or instant review */
+      }
+
+      // 2. Fallback if native display is not present
       try {
         if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder) {
-          throw new Error("Screen recording is unavailable in this browser context. Use 'Import video file' below.");
+          throw new Error("No local display");
         }
         ocStream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: false});
         const vTrack = ocStream.getVideoTracks()[0];
         ocWindowTitle = vTrack?.label || "";
-        ocStatus("Starting instant session…");
         const qr = await request("/api/quick-record", {
           method: "POST",
           body: JSON.stringify({window_title: ocWindowTitle || undefined}),
         });
         ocSession = qr.session;
         ocChunks = [];
-        const mime = ["video/webm;codecs=vp9", "video/webm"].find(t => MediaRecorder.isTypeSupported(t));
+        const mime = ["video/webm;codecs=vp8", "video/webm"].find(t => MediaRecorder.isTypeSupported(t));
         ocRecorder = new MediaRecorder(ocStream, mime ? {mimeType: mime} : {});
         ocRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) ocChunks.push(e.data); };
-        ocStartTime = Date.now();
-        if ($("oneClickTimer")) $("oneClickTimer").textContent = "00:00";
-        ocTimerInterval = setInterval(() => {
-          const sec = Math.max(0, Math.floor((Date.now() - ocStartTime) / 1000));
-          const mm = String(Math.floor(sec / 60)).padStart(2, "0");
-          const ss = String(sec % 60).padStart(2, "0");
-          if ($("oneClickTimer")) $("oneClickTimer").textContent = `${mm}:${ss}`;
-        }, 500);
+        startTimerTick();
         if (vTrack) {
           vTrack.onended = () => { if (ocRecorder?.state === "recording") ocRecorder.stop(); };
         }
@@ -630,39 +693,52 @@
           const blob = new Blob(ocChunks, {type: ocRecorder?.mimeType || "video/webm"});
           if (blob.size > 0) {
             await processOneClickBlob(blob, ocWindowTitle, elapsed);
-          } else {
-            ocStatus("Recording was empty. Click Start Recording to try again.");
           }
         };
-        ocRecorder.start(1000);
+        ocRecorder.start();
         $("oneClickRecordBtn").hidden = true;
         $("oneClickStopBtn").hidden = false;
-        if ($("oneClickReviewCard")) $("oneClickReviewCard").hidden = true;
         ocStatus("Recording live — perform your task, then click Stop Recording.");
-      } catch (err) {
+      } catch {
         stopOcStream();
         $("oneClickRecordBtn").hidden = false;
         $("oneClickStopBtn").hidden = true;
-        ocStatus("Screen picker closed — opening Instant AI Auto-Review & Multiple-Choice Questions…");
-        try {
-          const qr = await request("/api/quick-record", {method: "POST", body: JSON.stringify({})});
-          ocSession = qr.session;
-          const reviewData = await request(`/api/sessions/${ocSession.id}/auto-review`, {
-            method: "POST",
-            body: JSON.stringify({duration_seconds: 2.5}),
-          });
-          if ($("oneClickReviewCard")) {
-            renderMultipleChoiceUI($("oneClickReviewCard"), ocSession.id, reviewData);
-          }
-        } catch (innerErr) {
-          ocStatus(`Error: ${innerErr.message}`);
+        const qr = await request("/api/quick-record", {method: "POST", body: JSON.stringify({})});
+        ocSession = qr.session;
+        const reviewData = await request(`/api/sessions/${ocSession.id}/auto-review`, {
+          method: "POST",
+          body: JSON.stringify({duration_seconds: 2.5}),
+        });
+        if ($("oneClickReviewCard")) {
+          renderMultipleChoiceUI($("oneClickReviewCard"), ocSession.id, reviewData);
         }
       }
     };
   }
 
   if ($("oneClickStopBtn")) {
-    $("oneClickStopBtn").onclick = () => {
+    $("oneClickStopBtn").onclick = async () => {
+      if (ocNativeSessionId) {
+        const sid = ocNativeSessionId;
+        ocNativeSessionId = null;
+        stopOcStream();
+        $("oneClickRecordBtn").hidden = false;
+        $("oneClickStopBtn").hidden = true;
+        ocStatus("Stopping recording & opening AI Review popup…");
+        try {
+          const reviewData = await request(`/api/native-record/${sid}/stop`, {
+            method: "POST",
+            body: JSON.stringify({}),
+          });
+          ocStatus("AI review ready.");
+          if ($("oneClickReviewCard")) {
+            renderMultipleChoiceUI($("oneClickReviewCard"), sid, reviewData);
+          }
+        } catch (err) {
+          ocStatus(`Error stopping recording: ${err.message}`);
+        }
+        return;
+      }
       if (ocRecorder?.state === "recording") ocRecorder.stop();
     };
   }
@@ -676,5 +752,4 @@
       await processOneClickBlob(file, file.name.replace(/\.[^.]+$/, ""), 2.5);
     };
   }
-
 })();

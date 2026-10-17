@@ -749,6 +749,20 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         except Exception as exc:
             raise HTTPException(422, str(exc)) from exc
 
+
+    @app.post("/api/native-record/start")
+    def post_native_record_start():
+        from .hybrid import start_native_recording
+        return start_native_recording(app.state.store)
+
+    @app.post("/api/native-record/{session_id}/stop")
+    def post_native_record_stop(session_id: uuid.UUID):
+        from .hybrid import stop_native_recording
+        try:
+            return stop_native_recording(app.state.store, str(session_id))
+        except Exception as exc:
+            raise HTTPException(422, str(exc)) from exc
+
     @app.get("/api/universal-agents")
     @app.get("/api/agents/detect")
     def get_universal_agents():

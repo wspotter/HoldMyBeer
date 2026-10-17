@@ -1749,7 +1749,7 @@ def _detect_active_window_title(display: str) -> str:
         win_id = out.strip().split()[-1].rstrip(",")
         if win_id and win_id != "0x0":
             wout = subprocess.check_output(
-                ["xprop", "-id", win_id, "_NET_WM_NAME", "WM_NAME"],
+                ["xprop", "-id", win_id, "_NET_WM_NAME", "WM_NAME", "WM_CLASS"],
                 env=env,
                 stderr=subprocess.DEVNULL,
                 text=True,
@@ -1758,15 +1758,27 @@ def _detect_active_window_title(display: str) -> str:
             for line in wout.splitlines():
                 if "=" in line and '"' in line:
                     val = line.split('"', 1)[1].rsplit('"', 1)[0].strip()
-                    if val and "holdmybeer" not in val.lower():
+                    if val and "holdmybeer" not in val.lower() and "127.0.0.1:8096" not in val.lower():
                         return val
     except Exception:
         pass
     return ""
 
 
+def _sample_activity_loop(state: dict[str, Any]) -> None:
+    import time
+    display = state["display"]
+    seen_windows: list[str] = state["seen_windows"]
+    while state.get("running"):
+        w = _detect_active_window_title(display)
+        if w and w not in seen_windows:
+            seen_windows.append(w)
+        time.sleep(0.35)
+
+
 def start_native_recording(store: Any) -> dict[str, Any]:
     import subprocess
+    import threading
     import time
 
     display = _detect_x11_display()
@@ -1777,8 +1789,6 @@ def start_native_recording(store: Any) -> dict[str, Any]:
     now = _now()
     with store.lock:
         with store.connect() as db:
-            from .training import _ensure_tables
-            _ensure_tables(db)
             row_count = db.execute("SELECT COUNT(*) FROM training_tasks").fetchone()[0]
             inferred = infer_quick_record_metadata(window_title=win_title or None, existing_count=row_count)
             app_name = inferred["app_name"]
@@ -1818,30 +1828,37 @@ def start_native_recording(store: Any) -> dict[str, Any]:
             db.execute("INSERT INTO training_tasks VALUES(?,?,?,?,?,?)", (tid, aid, final_task_name, 1, None, now))
             db.execute("INSERT INTO training_versions VALUES(?,?,?,?,?)", (tid, 1, sid, now, None))
 
-    out_path = store.artifacts / f"{sid}.webm"
+    raw_mp4 = store.artifacts / f".{sid}.capture.mp4"
+    out_mp4 = store.artifacts / f"{sid}.mp4"
     cmd = [
         "ffmpeg",
         "-v", "error",
         "-f", "x11grab",
-        "-framerate", "24",
+        "-framerate", "25",
         "-i", display,
         "-vf", "scale=1280:-2",
-        "-c:v", "libvpx",
-        "-b:v", "1500k",
-        "-deadline", "realtime",
-        "-cpu-used", "6",
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-pix_fmt", "yuv420p",
+        "-g", "25",
         "-y",
-        str(out_path),
+        str(raw_mp4),
     ]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    _ACTIVE_NATIVE_RECORDERS[sid] = {
+    state: dict[str, Any] = {
         "proc": proc,
         "display": display,
         "start_time": time.time(),
         "window_title": win_title,
-        "out_path": out_path,
+        "seen_windows": [win_title] if win_title else [],
+        "raw_mp4": raw_mp4,
+        "out_mp4": out_mp4,
         "task_id": tid,
+        "running": True,
     }
+    sampler = threading.Thread(target=_sample_activity_loop, args=(state,), daemon=True)
+    sampler.start()
+    _ACTIVE_NATIVE_RECORDERS[sid] = state
     return {
         "supported": True,
         "status": "recording",
@@ -1862,10 +1879,15 @@ def stop_native_recording(store: Any, session_id: str) -> dict[str, Any]:
     info = _ACTIVE_NATIVE_RECORDERS.pop(sid, None)
     elapsed = 2.5
     win_title = ""
+    raw_mp4 = store.artifacts / f".{sid}.capture.mp4"
+    out_mp4 = store.artifacts / f"{sid}.mp4"
+
     if info is not None:
+        info["running"] = False
         proc = info["proc"]
         elapsed = max(1.0, round(time.time() - info["start_time"], 1))
-        win_title = _detect_active_window_title(info["display"]) or info.get("window_title") or ""
+        seen = [w for w in info.get("seen_windows", []) if w]
+        win_title = seen[-1] if seen else (_detect_active_window_title(info["display"]) or info.get("window_title") or "")
         try:
             if proc.poll() is None:
                 proc.send_signal(signal.SIGINT)
@@ -1876,13 +1898,27 @@ def stop_native_recording(store: Any, session_id: str) -> dict[str, Any]:
             except Exception:
                 pass
 
-    out_path = store.artifacts / f"{sid}.webm"
-    if not out_path.is_file() or out_path.stat().st_size < 100:
-        # Synthesize a clean 2s fallback WebM so review & playback always succeed
+    if raw_mp4.is_file() and raw_mp4.stat().st_size > 100:
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-v", "error", "-y", "-i", str(raw_mp4),
+                    "-c", "copy", "-movflags", "+faststart", str(out_mp4),
+                ],
+                check=True,
+                timeout=10,
+            )
+        except Exception:
+            os.replace(raw_mp4, out_mp4)
+        finally:
+            raw_mp4.unlink(missing_ok=True)
+
+    if not out_mp4.is_file() or out_mp4.stat().st_size < 100:
         subprocess.run(
             [
-                "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=#1e241b:s=960x540:r=24:d=2",
-                "-c:v", "libvpx", "-b:v", "800k", "-y", str(out_path),
+                "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=#1e241b:s=960x540:r=25:d=2",
+                "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                "-y", str(out_mp4),
             ],
             check=False,
             timeout=10,

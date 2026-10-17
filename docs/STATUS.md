@@ -18,8 +18,8 @@ Verified through tests: session persistence, input validation, media preservatio
 
 The original user's recording was inspected through MCP. It shows an existing saved draft, a caption edit, and a new matching saved receipt. This establishes useful frame evidence, not a complete observation of every initial click.
 
-Codex CLI Luna, with a temporary configuration, received actual recording images and submitted a review-only proposal. Saved-profile installs and other clients remain unverified.
+Codex CLI, with a temporary configuration, received actual recording images and submitted a review-only proposal. Saved-profile installs and other clients remain unverified.
 
 Production gates remaining: independent saved-profile installation receipts; a task beyond the fixture; richer action/success-check contracts; cancellation; supported-platform packaging checks; private data lifecycle and upgrade tests; independent pilot users. No live social publishing or production Hermes installation is claimed.
 
-Development uses bounded Luna workers for implementation and tests, with parent integration and visible browser acceptance. No token/dollar savings have been measured.
+Development uses bounded subagent workers for implementation and tests, with parent integration and visible browser acceptance. No token/dollar savings have been measured.

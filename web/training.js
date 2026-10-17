@@ -140,12 +140,21 @@
     event.preventDefault(); if (busy || !event.currentTarget.reportValidity()) return;
     busy = true; setStatus("trainingTaskStatus", "Saving task…");
     try {
+      // Name only: the task name is an organizational label, not intent. Intent is
+      // inferred later from a real recording examined by a connected agent.
       detail = await trainingApi(`/api/training/apps/${selectedApp}/tasks`, {method:"POST", body:JSON.stringify({
-        name:$("trainingTaskName").value.trim(), description:$("trainingTaskDescription").value.trim(), done:$("trainingTaskDone").value.trim(),
+        name:$("trainingTaskName").value.trim(),
       })});
-      selectedTask = detail.id; await showTask(detail);
-    } catch (error) { setStatus("trainingTaskStatus", `Could not save task. ${error.message}`); }
-    finally { busy = false; }
+      selectedTask = detail.id;
+    } catch (error) {
+      setStatus("trainingTaskStatus", `Could not save task. ${error.message}`);
+      return;
+    } finally { busy = false; }
+    // The name-only task is persisted; hand off to the real recording/import path now
+    // that busy is cleared. Persisted task identity and recording/session linkage mean
+    // reload/reopen returns here without creating a duplicate session.
+    document.dispatchEvent(new CustomEvent("hmb-training-session", {detail:{task: detail, session: detail.session}}));
+    document.dispatchEvent(new CustomEvent("hmb-training-record"));
   };
   $("trainingTaskContinue").onclick = async () => {
     if (busy || !selectedTask) return;

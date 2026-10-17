@@ -33,7 +33,7 @@ The named GitHub procedure reads visible issue titles and links; it does not pri
 
 ## Promotion draft — founder review required
 
-Suggested audience: Hermes/MCP developers who want inspectable, human-approved browser procedures. Suggested demo: ask Ollie for a public issue brief, inspect and approve its exact plan, show the retained source-bearing report, then repeat with new search words. Explain the fixed supported procedure before showing the fixture teaching workspace.
+Suggested audience: Hermes/MCP developers who want inspectable, human-approved browser procedures. Suggested demo: ask your connected agent for a public issue brief, inspect and approve its exact plan, show the retained source-bearing report, then repeat with new search words. Explain the fixed supported procedure before showing the fixture teaching workspace.
 
 Draft promise: “A free, open-source experiment in browser procedures you can inspect: choose a public GitHub repository, approve a read-only search, and keep the result. Bring your own MCP agent.”
 

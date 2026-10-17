@@ -24,8 +24,9 @@
         <section class="first-task" aria-labelledby="directedTitle">
           <span class="task-label">START WITH YOUR TASK</span>
           <h2 id="directedTitle">What should I learn?</h2>
-          <p>Choose an app, name a task, describe what “done” looks like, then record one complete example.</p>
+          <p>Choose an app, name a task, then record one complete example.</p>
           <button class="primary" id="directedBegin" type="button">Show me how</button>
+          <button class="quiet" id="quickRecordBegin" type="button">🍺 Hold My Beer (Instant Record)</button>
           <small>Preview: recordings are saved; assistant review needs a connected agent. Repeating your task is not available yet. Approval confirms understanding only.</small>
         </section>
         <p class="simple-footnote">Your recording stays in this local workspace.</p>
@@ -53,10 +54,10 @@
           <button id="trainingTaskContinue" class="primary" type="button" disabled>Continue to task details</button>
           <button id="trainingTaskCreateToggle" class="quiet" type="button">Create a task</button>
           <form id="trainingTaskCreateForm" hidden>
-            <label for="trainingTaskName">Task name</label><input id="trainingTaskName" maxlength="160" required />
-            <label for="trainingTaskDescription">What should the assistant do?</label><textarea id="trainingTaskDescription" maxlength="2000" required></textarea>
-            <label for="trainingTaskDone">How will you know it is done?</label><textarea id="trainingTaskDone" maxlength="1000" required></textarea>
-            <button class="primary" type="submit">Save task</button>
+            <label for="trainingTaskName">Task name</label>
+            <input id="trainingTaskName" maxlength="200" required aria-describedby="trainingTaskNameHelp" />
+            <small id="trainingTaskNameHelp">Give it a short title you'll recognize later, like Export a PDF or Save a customer order. You'll show the assistant the steps next.</small>
+            <button class="primary" type="submit">Show how you do it</button>
           </form>
           <p id="trainingTaskStatus" class="task-status" role="status" aria-live="polite"></p>
         </section>
@@ -84,9 +85,14 @@
           <section id="directedDescribeStage" aria-labelledby="directedDescribeTitle" hidden><h2 id="directedDescribeTitle">Task details</h2><input id="directedGoal" type="hidden" /><input id="directedDone" type="hidden" /></section>
           <section id="directedRecordStage" aria-labelledby="directedRecordTitle" hidden>
             <button class="back-link" id="directedEditDetails" type="button">← Current task details</button>
-            <h2 id="directedRecordTitle" tabindex="-1">4. Show one complete example</h2>
+            <h2 id="directedRecordTitle" tabindex="-1">3. Show one complete example</h2>
             <p id="directedTaskSummary" class="compact-copy"></p>
             <p id="directedVersionSummary" class="task-status"></p>
+            <div id="quickRecordBanner" class="compact-fields" hidden>
+              <label for="quickRecordNameInput">Quick workflow name (rename anytime)</label>
+              <input id="quickRecordNameInput" maxlength="160" />
+              <button id="quickRecordSaveName" class="quiet" type="button">Save name</button>
+            </div>
             <div class="directed-recording">
               <p class="compact-copy">Choose the app window or tab and perform the whole task. Review the saved video before continuing.</p>
               <div class="directed-actions">
@@ -100,6 +106,11 @@
             </div>
             <label class="check"><input id="directedComplete" type="checkbox" /> This video shows one complete example of the task.</label>
             <button id="directedReview" class="primary" type="button" disabled>Review what it learned</button>
+            <section id="recipeCardPanel" class="task-surface" aria-label="3-Line Recipe Card" hidden></section>
+            <section id="sandboxDryRunPanel" class="task-surface" aria-label="Sandbox Dry-Run Preview">
+              <button id="sandboxDryRunBtn" class="quiet" type="button">Preview in Safe Sandbox (Dry-Run)</button>
+              <div id="sandboxDiffOutput" class="task-status" hidden></div>
+            </section>
           </section>
         </form>
         <p id="directedStatus" class="task-status" role="status" aria-live="polite">Describe the task and its done condition.</p>
@@ -210,7 +221,7 @@
           <details>
             <summary>Connect your agent</summary>
             <p>Start the local <code>holdmybeer-mcp</code> server through your client's MCP settings. Your agent can then inspect this recording and submit a proposal. Recording alone does not start AI review.</p>
-            <a href="https://github.com/wspotter/HoldMyBeer/blob/codex/holdmybeer-preview/docs/CLIENTS.md" target="_blank" rel="noopener">Client setup and verified limits ↗</a>
+            <a href="https://github.com/wspotter/HoldMyBeer/blob/main/docs/CLIENTS.md" target="_blank" rel="noopener">Client setup and verified limits ↗</a>
           </details>
         </section>
         <section id="practice" class="practice-panel">

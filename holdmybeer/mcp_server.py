@@ -10,15 +10,107 @@ from pathlib import Path
 from uuid import UUID
 
 from mcp.server.fastmcp import FastMCP, Image
-from mcp.types import ToolAnnotations
+from mcp.types import TextContent, Tool as MCPTool, ToolAnnotations
 
 from .frames import FrameError, extract_frames
+from .hybrid import list_hybrid_recipes, run_hybrid_recipe
 from .proposals import Observation, TeachingQuestion, create_proposal
 from .models import Procedure
 from .revisions import read_revisions
 from .training import training_task_metadata
 
-mcp = FastMCP("HoldMyBeer")
+
+class HoldMyBeerMCP(FastMCP):
+    async def list_tools(self) -> list[MCPTool]:
+        tools = await super().list_tools()
+        try:
+            recipes = list_hybrid_recipes(_root())
+        except Exception:
+            recipes = []
+        if not recipes and os.environ.get("HMB_UNIVERSAL_TOOLS") != "1":
+            return tools
+        tools.append(
+            MCPTool(
+                name="hmb_list_universal_workflows",
+                description="List all taught HoldMyBeer universal hybrid workflows, their 3-Line Recipe Cards, and parameter schemas.",
+                inputSchema={"type": "object", "properties": {}, "required": []},
+                annotations=ToolAnnotations(
+                    readOnlyHint=True,
+                    destructiveHint=False,
+                    openWorldHint=False,
+                    idempotentHint=True,
+                ),
+            )
+        )
+        seen_names = {t.name for t in tools}
+        for recipe in recipes:
+            tool_name = f"hmb_workflow_{recipe.slug()}"
+            if tool_name in seen_names:
+                continue
+            seen_names.add(tool_name)
+            tools.append(
+                MCPTool(
+                    name=tool_name,
+                    description=(
+                        f"{recipe.title} ({recipe.app_name}). Deterministic hybrid script workflow; "
+                        "defaults to safe sandbox dry_run=true."
+                    ),
+                    inputSchema=recipe.to_json_schema(include_dry_run=True),
+                    annotations=ToolAnnotations(
+                        readOnlyHint=False,
+                        destructiveHint=False,
+                        openWorldHint=False,
+                        idempotentHint=False,
+                    ),
+                )
+            )
+        return tools
+
+    async def call_tool(self, name: str, arguments: dict | None = None):
+        args = dict(arguments or {})
+        if name == "hmb_list_universal_workflows":
+            return [TextContent(type="text", text=json.dumps(hmb_list_universal_workflows()))]
+        if name.startswith("hmb_workflow_"):
+            recipes = list_hybrid_recipes(_root())
+            recipe = next((r for r in recipes if f"hmb_workflow_{r.slug()}" == name), None)
+            if recipe is None:
+                raise ValueError(f"workflow tool not found: {name}")
+            dry_run = bool(args.pop("dry_run", True))
+            target_dir = args.pop("target_dir", None)
+            approved = bool(args.pop("user_approved_understanding", False))
+            result = run_hybrid_recipe(
+                recipe=recipe,
+                parameters=args,
+                target_dir=target_dir,
+                dry_run=dry_run,
+                user_approved_understanding=approved,
+            )
+            return [TextContent(type="text", text=json.dumps(result))]
+        return await super().call_tool(name, args)
+
+
+mcp = HoldMyBeerMCP("HoldMyBeer")
+
+
+def hmb_list_universal_workflows() -> dict:
+    """Return all taught hybrid workflows and their 3-Line Recipe Cards."""
+    recipes = list_hybrid_recipes(_root())
+    return {
+        "workflows": [
+            {
+                "recipe_id": r.recipe_id,
+                "task_id": r.task_id,
+                "title": r.title,
+                "app_name": r.app_name,
+                "tool_name": f"hmb_workflow_{r.slug()}",
+                "recipe_card": r.to_recipe_card(),
+                "input_schema": r.to_json_schema(include_dry_run=True),
+            }
+            for r in recipes
+        ],
+        "count": len(recipes),
+    }
+
 
 
 def _root() -> Path:

@@ -1,0 +1,9 @@
+{
+  "revision": 2,
+  "steps": [
+    {"goal":"Choose the fictional demo file","check":"Media has the supplied filename, not a real uploaded video","action":"select_media","target":"Media","input":"filename"},
+    {"goal":"Describe this fixture draft","check":"Caption contains the supplied fictional text","action":"fill","target":"Caption","input":"caption"},
+    {"goal":"Store a local fixture draft","check":"Save draft produces a saved receipt","action":"click","target":"Save draft"},
+    {"goal":"Confirm the retained result","check":"Receipt ID, filename and caption match the retained fixture draft list","action":"verify_draft"}
+  ]
+}

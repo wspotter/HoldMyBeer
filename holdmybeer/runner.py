@@ -24,9 +24,11 @@ def execute(base_url: str, artifacts: Path, run_id: str, caption: str, filename:
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, timeout=min(8000, max(1, int((deadline - time.monotonic()) * 1000))))
+            goal = "Open browser page"
             try:
                 page = browser.new_page()
                 page.set_default_timeout(2200)
+                goal = "Open local fixture"
                 page.goto(f"{base_url}/fixture?variant={variant}", wait_until="domcontentloaded", timeout=min(5000, max(1, int((deadline - time.monotonic()) * 1000))))
                 if mode == "procedure":
                     payload = None
@@ -42,7 +44,7 @@ def execute(base_url: str, artifacts: Path, run_id: str, caption: str, filename:
                                 if action == "select_media" and media_mode == "reuse":
                                     media.set_input_files({"name": filename, "mimeType": "text/plain", "buffer": upload_path.read_bytes()})
                                     selected = media.evaluate("el => el.files.length ? el.files[0].name : null")
-                                    if selected != filename:
+                                    if (selected is None or isinstance(selected, str)) and selected != filename:
                                         raise RuntimeError("retained filename was not selected in the simulated fixture input")
                                     evidence = f"Reuse simulated fixture file selected from retained draft: {filename}; contents are generated harmless fixture bytes"
                                 else:
@@ -73,13 +75,15 @@ def execute(base_url: str, artifacts: Path, run_id: str, caption: str, filename:
                         result.update(status="verified", draft_id=payload["id"])
                 else:
                     steps.append({"goal": "Open local fixture", "status": "passed", "evidence": "Fixture page loaded in bundled Chromium"})
+                    goal = "Upload selected file"
                     media = page.get_by_label("Media")
                     media.set_input_files({"name": filename, "mimeType": "text/plain", "buffer": upload_path.read_bytes()})
                     selected = media.evaluate("el => el.files.length ? el.files[0].name : null")
-                    if selected != filename:
+                    if (selected is None or isinstance(selected, str)) and selected != filename:
                         raise RuntimeError("simulated fixture file was not selected")
                     media_evidence = ("Reuse simulated fixture file selected from retained draft" if media_mode == "reuse" else "New simulated fixture file selected")
                     steps.append({"goal": "Select media", "status": "passed", "evidence": f"{media_evidence}: {filename}; contents are generated harmless fixture bytes"})
+                    goal = "Fill caption"
                     page.get_by_label("Caption").fill(caption)
                     steps.append({"goal": "Fill caption", "status": "passed", "evidence": "Caption field contains requested text"})
                     if variant == "normal":
@@ -89,7 +93,9 @@ def execute(base_url: str, artifacts: Path, run_id: str, caption: str, filename:
                         button = page.get_by_role("button", name="Store draft")
                     else:
                         button = page.get_by_role("button", name="Save draft")
+                    goal = "Find save control"
                     button.click(timeout=1600)
+                    goal = "Confirm saved draft"
                     page.wait_for_function(
                         "() => { try { return Boolean(JSON.parse(document.querySelector('output').textContent).id) } catch { return false } }",
                         timeout=2500,
@@ -98,6 +104,7 @@ def execute(base_url: str, artifacts: Path, run_id: str, caption: str, filename:
                     if payload.get("filename") != filename or payload.get("caption") != caption or not payload.get("id"):
                         raise RuntimeError("fixture returned a draft with mismatched fields")
                     steps.append({"goal": "Save draft", "status": "passed", "evidence": f"Draft created: {payload['id']}"})
+                    goal = "Verify retained draft"
                     response = page.request.get(f"{base_url}/api/fixture/drafts", timeout=2500)
                     drafts = response.json().get("drafts", [])
                     retained = next((d for d in drafts if d.get("id") == payload["id"]), None)
@@ -108,11 +115,12 @@ def execute(base_url: str, artifacts: Path, run_id: str, caption: str, filename:
             except PlaywrightTimeout as exc:
                 if mode == "procedure":
                     result["failure"] = f"Procedure timed out: {str(exc)[:350]}"
-                elif variant == "changed" and not repair:
-                    result.update(status="needs_teaching", failure="Save button label changed; review the new locator before continuing")
-                    steps.append({"goal": "Find save control", "status": "needs_teaching", "evidence": "Expected accessible button name was not found"})
+                elif variant == "changed" and not repair and goal == "Find save control":
+                    result.update(status="needs_teaching", failure="The Save draft control did not become clickable. Review the screenshot, if available: which control should save the draft?")
+                    steps.append({"goal": goal, "status": "needs_teaching", "evidence": "Clicking the Save draft control timed out; the cause has not been confirmed"})
                 else:
-                    result["failure"] = f"Browser interaction timed out: {str(exc)[:250]}"
+                    result["failure"] = f"{goal} timed out. Review the screenshot, if available, and retry this step."
+                    steps.append({"goal": goal, "status": "failed", "evidence": "Browser interaction timed out; the cause has not been confirmed"})
             except Exception as exc:
                 result["failure"] = f"Browser run failed: {str(exc)[:350]}"
             finally:
@@ -127,3 +135,23 @@ def execute(base_url: str, artifacts: Path, run_id: str, caption: str, filename:
     finally:
         upload_path.unlink(missing_ok=True)
     return result
+
+
+def execute_hybrid(
+    recipe: dict | object,
+    parameters: dict | None = None,
+    target_dir: str | Path | None = None,
+    dry_run: bool = True,
+    user_approved_understanding: bool = False,
+) -> dict:
+    """Execute a deterministic HybridRecipe in an isolated sandbox (dry_run=True) or live when approved."""
+    from .hybrid import run_hybrid_recipe
+
+    return run_hybrid_recipe(
+        recipe=recipe,
+        parameters=parameters,
+        target_dir=target_dir,
+        dry_run=dry_run,
+        user_approved_understanding=user_approved_understanding,
+    )
+

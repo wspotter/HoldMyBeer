@@ -32,16 +32,25 @@ class AppInput(StrictModel):
 
 
 class TaskInput(StrictModel):
+    # The task name is an organizational label only; intent is inferred later from
+    # a real recording, so description/done are optional here and become legacy
+    # notes for previously recorded tasks rather than pre-recorded intent.
     name: str = Field(min_length=1, max_length=200)
-    description: str = Field(min_length=1, max_length=2000)
-    done: str = Field(min_length=1, max_length=1000)
+    description: str = Field(default="", max_length=2000)
+    done: str = Field(default="", max_length=1000)
 
-    @field_validator("name", "description", "done")
+    @field_validator("name")
     @classmethod
-    def clean(cls, value):
+    def clean_name(cls, value):
         if not value.strip():
-            raise ValueError("value cannot be blank")
+            raise ValueError("task name cannot be blank")
         return value.strip()
+
+    @field_validator("description", "done")
+    @classmethod
+    def clean_optional(cls, value):
+        # Empty is allowed; a name-only task starts in the pending-intent state.
+        return "" if value is None else value.strip()
 
 
 class VersionInput(StrictModel):
@@ -65,7 +74,8 @@ def training_router(store):
             id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS training_tasks(
             id TEXT PRIMARY KEY, app_id TEXT NOT NULL REFERENCES training_apps(id), name TEXT NOT NULL,
-            latest_version INTEGER NOT NULL, working_version INTEGER, created_at TEXT NOT NULL);
+            latest_version INTEGER NOT NULL, working_version INTEGER, created_at TEXT NOT NULL,
+            UNIQUE(app_id, name));
         CREATE TABLE IF NOT EXISTS training_versions(
             task_id TEXT NOT NULL REFERENCES training_tasks(id), version INTEGER NOT NULL,
             session_id TEXT NOT NULL UNIQUE REFERENCES sessions(id), created_at TEXT NOT NULL,
@@ -98,7 +108,8 @@ def training_router(store):
 
     def make_session(task_name, description, done, source=None):
         data = {"id": str(uuid.uuid4()), "title": task_name, "created_at": _now(), "notes": "",
-                "answers": {"teaching_task_name": task_name, "teaching_goal": description, "teaching_done": done},
+                "answers": {"teaching_task_name": task_name, "teaching_goal": description, "teaching_done": done,
+                            "teaching_recording_confirmed": "no"},
                 "procedure": {"revision": 1, "steps": []}, "media_url": None, "runs": []}
         if source:
             data["notes"] = source.get("notes", "")
@@ -171,6 +182,11 @@ def training_router(store):
         with store.connect() as db:
             if not db.execute("SELECT 1 FROM training_apps WHERE id=?", (aid,)).fetchone():
                 raise HTTPException(404, "app not found")
+            # The name is an organizational label, not intent; reject a duplicate
+            # name in this app before creating a session so we never orphan bytes.
+            if db.execute("SELECT 1 FROM training_tasks WHERE app_id=? AND name=?",
+                          (aid, body.name)).fetchone():
+                raise HTTPException(409, "a task with that name already exists in this app")
         data = make_session(body.name, body.description, body.done)
         store_version_session(data)
         try:
@@ -178,8 +194,14 @@ def training_router(store):
                 db.execute("BEGIN IMMEDIATE")
                 db.execute("INSERT INTO training_tasks VALUES(?,?,?,?,?,?)", (tid, aid, body.name, 1, None, _now()))
                 db.execute("INSERT INTO training_versions VALUES(?,?,?,?,?)", (tid, 1, data["id"], _now(), None))
-        except Exception:
+        except Exception as exc:
             # A session that could not be attached must not become an orphaned training session.
+            # The UNIQUE(app_id,name) backstop catches a race past the pre-check above.
+            if "UNIQUE" in str(exc).upper():
+                with store.connect() as db:
+                    db.execute("DELETE FROM procedure_revisions WHERE session_id=?", (data["id"],))
+                    db.execute("DELETE FROM sessions WHERE id=?", (data["id"],))
+                raise HTTPException(409, "a task with that name already exists in this app") from exc
             with store.connect() as db:
                 db.execute("DELETE FROM procedure_revisions WHERE session_id=?", (data["id"],))
                 db.execute("DELETE FROM sessions WHERE id=?", (data["id"],))

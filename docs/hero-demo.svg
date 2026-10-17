@@ -1,0 +1,258 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 440" width="880" height="440" role="img" aria-label="HoldMyBeer v0.4.0a1 — 1-Button Instant Record, 3-Line Recipe Card, Sandbox Dry-Run Diff, and Universal Agent Export">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#111722"/>
+    </linearGradient>
+    <linearGradient id="amber-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#fbbf24"/>
+    </linearGradient>
+    <linearGradient id="blue-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#388bfd"/>
+      <stop offset="100%" stop-color="#58a6ff"/>
+    </linearGradient>
+    <linearGradient id="green-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#238636"/>
+      <stop offset="100%" stop-color="#3fb950"/>
+    </linearGradient>
+    <filter id="glow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <style>
+    .font-sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .font-mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+
+    /* 16-second 4-stage loop */
+    .stage-1 { animation: fadeStage1 16s infinite ease-in-out; }
+    .stage-2 { animation: fadeStage2 16s infinite ease-in-out; opacity: 0; }
+    .stage-3 { animation: fadeStage3 16s infinite ease-in-out; opacity: 0; }
+    .stage-4 { animation: fadeStage4 16s infinite ease-in-out; opacity: 0; }
+
+    .pill-1 { animation: activePill1 16s infinite ease-in-out; }
+    .pill-2 { animation: activePill2 16s infinite ease-in-out; }
+    .pill-3 { animation: activePill3 16s infinite ease-in-out; }
+    .pill-4 { animation: activePill4 16s infinite ease-in-out; }
+
+    .progress-bar { animation: progressSweep 16s infinite linear; }
+    .pulse-btn { animation: buttonPulse 4s infinite ease-in-out; transform-origin: 440px 215px; }
+
+    @keyframes fadeStage1 {
+      0%, 2%    { opacity: 1; transform: translateY(0px); }
+      22%       { opacity: 1; transform: translateY(0px); }
+      25%, 97%  { opacity: 0; transform: translateY(-6px); }
+      100%      { opacity: 1; transform: translateY(0px); }
+    }
+    @keyframes fadeStage2 {
+      0%, 23%   { opacity: 0; transform: translateY(6px); }
+      26%, 47%  { opacity: 1; transform: translateY(0px); }
+      50%, 100% { opacity: 0; transform: translateY(-6px); }
+    }
+    @keyframes fadeStage3 {
+      0%, 48%   { opacity: 0; transform: translateY(6px); }
+      51%, 72%  { opacity: 1; transform: translateY(0px); }
+      75%, 100% { opacity: 0; transform: translateY(-6px); }
+    }
+    @keyframes fadeStage4 {
+      0%, 73%   { opacity: 0; transform: translateY(6px); }
+      76%, 97%  { opacity: 1; transform: translateY(0px); }
+      100%      { opacity: 0; transform: translateY(-6px); }
+    }
+
+    @keyframes activePill1 {
+      0%, 23%   { fill: #1f2937; stroke: #f59e0b; stroke-width: 1.8; }
+      25%, 100% { fill: #161b22; stroke: #30363d; stroke-width: 1; }
+    }
+    @keyframes activePill2 {
+      0%, 24%   { fill: #161b22; stroke: #30363d; stroke-width: 1; }
+      26%, 48%  { fill: #1f2937; stroke: #58a6ff; stroke-width: 1.8; }
+      50%, 100% { fill: #161b22; stroke: #30363d; stroke-width: 1; }
+    }
+    @keyframes activePill3 {
+      0%, 49%   { fill: #161b22; stroke: #30363d; stroke-width: 1; }
+      51%, 73%  { fill: #1f2937; stroke: #3fb950; stroke-width: 1.8; }
+      75%, 100% { fill: #161b22; stroke: #30363d; stroke-width: 1; }
+    }
+    @keyframes activePill4 {
+      0%, 74%   { fill: #161b22; stroke: #30363d; stroke-width: 1; }
+      76%, 98%  { fill: #1f2937; stroke: #d2a8ff; stroke-width: 1.8; }
+      100%      { fill: #161b22; stroke: #30363d; stroke-width: 1; }
+    }
+
+    @keyframes progressSweep {
+      0%   { width: 0px; }
+      100% { width: 840px; }
+    }
+
+    @keyframes buttonPulse {
+      0%, 100% { transform: scale(1); }
+      50%      { transform: scale(1.025); }
+    }
+  </style>
+
+  <!-- Outer Canvas -->
+  <rect width="880" height="440" rx="14" fill="url(#bg-grad)" stroke="#30363d" stroke-width="1.5"/>
+
+  <!-- Window Titlebar -->
+  <rect x="1" y="1" width="878" height="42" rx="13" fill="#161b22"/>
+  <line x1="1" y1="43" x2="879" y2="43" stroke="#30363d" stroke-width="1"/>
+  <circle cx="22" cy="22" r="6" fill="#ff5f56"/>
+  <circle cx="42" cy="22" r="6" fill="#ffbd2e"/>
+  <circle cx="62" cy="22" r="6" fill="#27c93f"/>
+  <text x="440" y="26" text-anchor="middle" fill="#8b949e" font-size="12.5" font-weight="600" class="font-mono">holdmybeer v0.4.0a1 — AI Thinks, Script Executes (127.0.0.1:18940)</text>
+  <rect x="752" y="11" width="110" height="22" rx="11" fill="#1f242c" stroke="#30363d"/>
+  <text x="807" y="25" text-anchor="middle" fill="#3fb950" font-size="11" font-weight="600" class="font-mono">● 100% Local</text>
+
+  <!-- 4-Step Stage Indicator Row -->
+  <g transform="translate(20, 56)">
+    <rect x="0" y="0" width="201" height="32" rx="7" class="pill-1"/>
+    <text x="100" y="20" text-anchor="middle" fill="#f0f6fc" font-size="12" font-weight="600" class="font-sans">1. 1-Button Record</text>
+
+    <rect x="213" y="0" width="201" height="32" rx="7" class="pill-2"/>
+    <text x="313" y="20" text-anchor="middle" fill="#f0f6fc" font-size="12" font-weight="600" class="font-sans">2. 3-Line Recipe Card</text>
+
+    <rect x="426" y="0" width="201" height="32" rx="7" class="pill-3"/>
+    <text x="526" y="20" text-anchor="middle" fill="#f0f6fc" font-size="12" font-weight="600" class="font-sans">3. Sandbox Dry-Run Diff</text>
+
+    <rect x="639" y="0" width="201" height="32" rx="7" class="pill-4"/>
+    <text x="739" y="20" text-anchor="middle" fill="#f0f6fc" font-size="12" font-weight="600" class="font-sans">4. Universal Agent Export</text>
+  </g>
+
+  <!-- ======================================================================= -->
+  <!-- STAGE 1 (0-25%): 1-Button Instant Record (Zero Pre-Recording Forms)     -->
+  <!-- ======================================================================= -->
+  <g class="stage-1">
+    <rect x="40" y="106" width="800" height="292" rx="12" fill="#161b22" stroke="#30363d" stroke-width="1.2" filter="url(#glow)"/>
+
+    <text x="440" y="148" text-anchor="middle" fill="#f0f6fc" font-size="20" font-weight="700" class="font-sans">Show it once. Run it safely forever.</text>
+    <text x="440" y="172" text-anchor="middle" fill="#8b949e" font-size="13.5" class="font-sans">Zero pre-recording forms. Click once, demonstrate your workflow, and let HoldMyBeer draft a deterministic recipe.</text>
+
+    <!-- Big 1-Button Hero CTA -->
+    <g class="pulse-btn">
+      <rect x="250" y="192" width="380" height="54" rx="10" fill="url(#amber-grad)"/>
+      <text x="440" y="225" text-anchor="middle" fill="#0d1117" font-size="17" font-weight="800" class="font-sans">🍺 Hold My Beer (Instant Record)</text>
+    </g>
+
+    <!-- Auto-Detected Banner -->
+    <rect x="135" y="268" width="610" height="52" rx="8" fill="#0d1117" stroke="#388bfd" stroke-width="1.2"/>
+    <circle cx="162" cy="294" r="6" fill="#3fb950"/>
+    <text x="180" y="290" fill="#58a6ff" font-size="12" font-weight="700" class="font-mono">AUTO-DETECTED WORKFLOW INTENT</text>
+    <text x="180" y="309" fill="#e6edf3" font-size="13.5" font-weight="600" class="font-mono">"Organize &amp; Summarize Monthly Invoices"  (from /Downloads/Invoices)</text>
+
+    <text x="440" y="352" text-anchor="middle" fill="#8b949e" font-size="12" class="font-mono">AI extracts parameters once  •  Deterministic Python script executes  •  Zero cloud lock-in</text>
+    <text x="440" y="376" text-anchor="middle" fill="#f59e0b" font-size="12" font-weight="600" class="font-sans">▸ Step 1 of 4: Recording captured &amp; auto-titled without filling a single form field</text>
+  </g>
+
+  <!-- ======================================================================= -->
+  <!-- STAGE 2 (25-50%): Plain-English 3-Line Recipe Card                      -->
+  <!-- ======================================================================= -->
+  <g class="stage-2">
+    <rect x="40" y="106" width="800" height="292" rx="12" fill="#161b22" stroke="#388bfd" stroke-width="1.2" filter="url(#glow)"/>
+
+    <text x="72" y="142" fill="#f0f6fc" font-size="18" font-weight="700" class="font-sans">Plain-English 3-Line Recipe Card</text>
+    <rect x="640" y="123" width="168" height="24" rx="12" fill="#1f2937" stroke="#58a6ff"/>
+    <text x="724" y="139" text-anchor="middle" fill="#58a6ff" font-size="11.5" font-weight="600" class="font-mono">AI Thinks → Script Runs</text>
+
+    <!-- Line 1: When you give me -->
+    <rect x="72" y="160" width="736" height="54" rx="8" fill="#0d1117" stroke="#30363d"/>
+    <rect x="86" y="173" width="155" height="28" rx="6" fill="#1f242c"/>
+    <text x="163" y="192" text-anchor="middle" fill="#79c0ff" font-size="12.5" font-weight="700" class="font-mono">When you give me:</text>
+    <text x="256" y="192" fill="#e6edf3" font-size="13.5" class="font-mono">/Downloads/Invoices  (messy PDFs, CSVs &amp; receipts)</text>
+
+    <!-- Line 2: I will do -->
+    <rect x="72" y="224" width="736" height="66" rx="8" fill="#0d1117" stroke="#30363d"/>
+    <rect x="86" y="243" width="155" height="28" rx="6" fill="#1f242c"/>
+    <text x="163" y="262" text-anchor="middle" fill="#d2a8ff" font-size="12.5" font-weight="700" class="font-mono">I will do:</text>
+    <text x="256" y="248" fill="#e6edf3" font-size="13" class="font-mono">1. Sort PDFs into YYYY-MM/ folders with clean ISO date prefixes</text>
+    <text x="256" y="272" fill="#e6edf3" font-size="13" class="font-mono">2. Extract vendor + totals deterministically   3. Write summary.md</text>
+
+    <!-- Line 3: You will get -->
+    <rect x="72" y="300" width="736" height="54" rx="8" fill="#0d1117" stroke="#30363d"/>
+    <rect x="86" y="313" width="155" height="28" rx="6" fill="#1f242c"/>
+    <text x="163" y="332" text-anchor="middle" fill="#7ee787" font-size="12.5" font-weight="700" class="font-mono">You will get:</text>
+    <text x="256" y="332" fill="#e6edf3" font-size="13.5" class="font-mono">Verified archive + summary.md + SHA-256 rollback-manifest.json</text>
+
+    <text x="440" y="378" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600" class="font-sans">▸ Step 2 of 4: Human-readable contract separates LLM parameter extraction from deterministic code</text>
+  </g>
+
+  <!-- ======================================================================= -->
+  <!-- STAGE 3 (50-75%): Mandatory Sandbox Dry-Run Diff (dry_run=True)         -->
+  <!-- ======================================================================= -->
+  <g class="stage-3">
+    <rect x="40" y="106" width="800" height="292" rx="12" fill="#161b22" stroke="#3fb950" stroke-width="1.2" filter="url(#glow)"/>
+
+    <text x="72" y="140" fill="#f0f6fc" font-size="17.5" font-weight="700" class="font-sans">Mandatory Sandbox Dry-Run Diff Preview</text>
+    <rect x="520" y="121" width="288" height="25" rx="12" fill="#122d1f" stroke="#3fb950"/>
+    <text x="664" y="138" text-anchor="middle" fill="#7ee787" font-size="11.5" font-weight="700" class="font-mono">dry_run=True • 80ms • 0 Tokens • 0 Files Touched</text>
+
+    <!-- Terminal Diff Box -->
+    <rect x="72" y="156" width="736" height="190" rx="8" fill="#0d1117" stroke="#30363d"/>
+    <text x="90" y="180" fill="#8b949e" font-size="12.5" class="font-mono">$ holdmybeer run invoice-organizer --dry-run --input target_dir=/Downloads/Invoices</text>
+    <line x1="72" y1="190" x2="808" y2="190" stroke="#21262d"/>
+
+    <text x="90" y="213" fill="#7ee787" font-size="12.5" class="font-mono">~ RENAME  IMG_9041_final(1).pdf  →  2026-10/2026-10-17_acme-supply-inv-904.pdf   [SHA-256: match]</text>
+    <text x="90" y="236" fill="#7ee787" font-size="12.5" class="font-mono">~ RENAME  oct_hosting_receipt.pdf →  2026-10/2026-10-17_cloud-node-inv-311.pdf    [SHA-256: match]</text>
+    <text x="90" y="259" fill="#3fb950" font-size="12.5" font-weight="600" class="font-mono">+ CREATE  2026-10/summary.md        (+18 lines: 2 vendors, $412.50 verified total)</text>
+    <text x="90" y="282" fill="#58a6ff" font-size="12.5" class="font-mono">+ STAGE   rollback-manifest.json    (1-click undo ready; live directory 100% untouched)</text>
+
+    <!-- Approve CTA inside diff box -->
+    <rect x="90" y="302" width="245" height="30" rx="6" fill="url(#green-grad)"/>
+    <text x="212" y="321" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="700" class="font-sans">✓ Approve &amp; Apply Changes (--apply)</text>
+    <text x="352" y="321" fill="#8b949e" font-size="12" class="font-mono">Real files never mutate without explicit approval</text>
+
+    <text x="440" y="376" text-anchor="middle" fill="#3fb950" font-size="12" font-weight="600" class="font-sans">▸ Step 3 of 4: Shadow sandbox computes exact before/after diffs in 80ms with zero LLM hallucination</text>
+  </g>
+
+  <!-- ======================================================================= -->
+  <!-- STAGE 4 (75-100%): Universal Agent Export (SKILL.md / MCP / OpenAI)     -->
+  <!-- ======================================================================= -->
+  <g class="stage-4">
+    <rect x="40" y="106" width="800" height="292" rx="12" fill="#161b22" stroke="#d2a8ff" stroke-width="1.2" filter="url(#glow)"/>
+
+    <text x="72" y="140" fill="#f0f6fc" font-size="17.5" font-weight="700" class="font-sans">Universal Agent Adapters — Teach Once, Call from Any Agent</text>
+    <rect x="595" y="121" width="213" height="25" rx="12" fill="#271c35" stroke="#d2a8ff"/>
+    <text x="701" y="138" text-anchor="middle" fill="#d2a8ff" font-size="11.5" font-weight="700" class="font-mono">MCP • SKILL.md • OpenAI • CLI</text>
+
+    <!-- Left column: Export commands -->
+    <rect x="72" y="156" width="435" height="190" rx="8" fill="#0d1117" stroke="#30363d"/>
+    <text x="88" y="180" fill="#79c0ff" font-size="12" font-weight="700" class="font-mono"># 1. Export portable SKILL.md bundle</text>
+    <text x="88" y="199" fill="#e6edf3" font-size="12" class="font-mono">$ holdmybeer export-skill invoice-organizer</text>
+
+    <text x="88" y="228" fill="#d2a8ff" font-size="12" font-weight="700" class="font-mono"># 2. Dynamic FastMCP tool auto-registered</text>
+    <text x="88" y="247" fill="#e6edf3" font-size="12" class="font-mono">mcp__holdmybeer__hmb_workflow_invoice_organizer</text>
+
+    <text x="88" y="276" fill="#ffa657" font-size="12" font-weight="700" class="font-mono"># 3. Auto-configure installed local agents</text>
+    <text x="88" y="295" fill="#e6edf3" font-size="12" class="font-mono">$ holdmybeer detect-agents --install-skills</text>
+    <text x="88" y="325" fill="#7ee787" font-size="11.5" class="font-mono">✓ Exported strict JSON schema + SKILL.md + MCP tool</text>
+
+    <!-- Right column: Supported Agent Grid -->
+    <rect x="523" y="156" width="285" height="190" rx="8" fill="#0d1117" stroke="#30363d"/>
+    <text x="665" y="180" text-anchor="middle" fill="#8b949e" font-size="11.5" font-weight="700" class="font-mono">WORKS NATIVELY IN YOUR AGENTS</text>
+
+    <rect x="541" y="194" width="120" height="36" rx="6" fill="#161b22" stroke="#30363d"/>
+    <text x="601" y="216" text-anchor="middle" fill="#f0f6fc" font-size="12" font-weight="600" class="font-sans">Claude Code</text>
+
+    <rect x="671" y="194" width="120" height="36" rx="6" fill="#161b22" stroke="#30363d"/>
+    <text x="731" y="216" text-anchor="middle" fill="#f0f6fc" font-size="12" font-weight="600" class="font-sans">Cursor / IDE</text>
+
+    <rect x="541" y="240" width="120" height="36" rx="6" fill="#161b22" stroke="#30363d"/>
+    <text x="601" y="262" text-anchor="middle" fill="#f0f6fc" font-size="12" font-weight="600" class="font-sans">OpenAI Codex</text>
+
+    <rect x="671" y="240" width="120" height="36" rx="6" fill="#161b22" stroke="#d2a8ff"/>
+    <text x="731" y="262" text-anchor="middle" fill="#d2a8ff" font-size="12" font-weight="600" class="font-sans">Hermes</text>
+
+    <rect x="541" y="286" width="120" height="36" rx="6" fill="#161b22" stroke="#7ee787"/>
+    <text x="601" y="308" text-anchor="middle" fill="#7ee787" font-size="12" font-weight="600" class="font-sans">Octo</text>
+
+    <rect x="671" y="286" width="120" height="36" rx="6" fill="#161b22" stroke="#30363d"/>
+    <text x="731" y="308" text-anchor="middle" fill="#f0f6fc" font-size="12" font-weight="600" class="font-sans">Ollama / Local</text>
+
+    <text x="440" y="376" text-anchor="middle" fill="#d2a8ff" font-size="12" font-weight="600" class="font-sans">▸ Step 4 of 4: Every approved workflow becomes a callable tool across your entire agent fleet</text>
+  </g>
+
+  <!-- Animated Bottom Timeline Progress Bar -->
+  <rect x="20" y="414" width="840" height="6" rx="3" fill="#21262d"/>
+  <rect x="20" y="414" width="840" height="6" rx="3" fill="url(#blue-grad)" class="progress-bar"/>
+</svg>

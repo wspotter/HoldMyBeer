@@ -409,6 +409,42 @@ def cmd_launch(args: argparse.Namespace) -> int:
         sock.close()
 
 
+def cmd_universal_agents(args: argparse.Namespace) -> int:
+    from .hybrid import detect_universal_agents
+    data_dir = _resolve_data_dir(args.data_dir)
+    info = detect_universal_agents(data_dir=data_dir, url=args.url)
+    lines = [
+        "HoldMyBeer Universal Agent Interoperability",
+        f"  OpenAI Tools Schema: {info['openai_tools_endpoint']}",
+        f"  MCP Server Command:  {info['mcp_command']}",
+        "  Agent Environments:",
+    ]
+    for agent in info["agents"]:
+        state = "DETECTED" if agent["detected"] else "ready"
+        lines.append(f"    [{state}] {agent['name']} ({agent['id']})")
+        lines.append(f"      connect: {agent['connect_one_liner']}")
+    print("\n".join(lines))
+    return EXIT_OK
+
+
+def cmd_export_skill(args: argparse.Namespace) -> int:
+    if not getattr(args, "task_id", None) or not getattr(args, "output_dir", None):
+        print("holdmybeer: export-skill requires --task-id and --output-dir", file=sys.stderr)
+        return EXIT_ERROR
+    from .app import Store
+    from .hybrid import export_skill_bundle, resolve_task_or_session_recipe
+    data_dir = _resolve_data_dir(args.data_dir)
+    store = Store(data_dir)
+    try:
+        recipe = resolve_task_or_session_recipe(store, args.task_id)
+        bundle = export_skill_bundle(recipe, args.output_dir)
+    except Exception as exc:
+        print(f"holdmybeer: could not export skill: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    print(json.dumps(bundle, indent=2))
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="holdmybeer",
@@ -428,8 +464,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "command",
         nargs="?",
-        choices=["doctor", "connect"],
-        help="Run doctor, configure a client, or launch the preview when omitted.",
+        choices=["doctor", "connect", "agents", "universal-status", "export-skill"],
+        help="Run doctor, configure a client, inspect universal agents, export a skill, or launch the preview when omitted.",
     )
     parser.add_argument(
         "client",
@@ -468,6 +504,18 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="LOOPBACK_URL",
         help=f"Local HoldMyBeer app URL for issue briefs (default: {DEFAULT_HMB_URL}).",
     )
+    parser.add_argument(
+        "--task-id",
+        default=None,
+        metavar="ID",
+        help="Task or session ID for 'export-skill'.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        metavar="DIR",
+        help="Destination directory for 'export-skill'.",
+    )
     return parser
 
 
@@ -486,6 +534,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("holdmybeer: choose a client: connect hermes", file=sys.stderr)
             return EXIT_ERROR
         return cmd_connect_hermes(args)
+    if getattr(args, "command", None) in {"agents", "universal-status"}:
+        return cmd_universal_agents(args)
+    if getattr(args, "command", None) == "export-skill":
+        return cmd_export_skill(args)
     if getattr(args, "client", None) is not None or getattr(args, "home", None) is not None or getattr(args, "url", DEFAULT_HMB_URL) != DEFAULT_HMB_URL:
         print("holdmybeer: --home, --url and client names require 'connect hermes'", file=sys.stderr)
         return EXIT_ERROR

@@ -64,9 +64,8 @@ def teaching_router(store):
             if not is_mutable_training_session(store, sid):
                 raise HTTPException(409, "This training version is retained. Use Edit task to create a new draft.")
             answers = store.get_session(sid).get("answers", {})
-            if (not answers.get("teaching_goal", "").strip() or not answers.get("teaching_done", "").strip()
-                    or answers.get("teaching_recording_confirmed") != "yes"):
-                raise HTTPException(409, "Describe the task and confirm your complete recording first.")
+            if answers.get("teaching_recording_confirmed") != "yes":
+                raise HTTPException(409, "Confirm your complete recording first.")
             current = review(sid)
             proposal = current["proposal"]
             if current["status"] not in {"ready", "approved"} or proposal["id"] != str(body.proposal_id):

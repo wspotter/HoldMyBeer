@@ -95,6 +95,34 @@ class DraftInput(StrictModel):
     filename: str = Field(min_length=1, max_length=255)
 
 
+class HybridRunInput(StrictModel):
+    dry_run: bool = True
+    user_approved_understanding: bool = False
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    target_dir: str | None = Field(default=None, max_length=1000)
+    recipe: dict[str, Any] | None = None
+
+
+class QuickRecordInput(StrictModel):
+    window_title: str | None = Field(default=None, max_length=300)
+    file_path: str | None = Field(default=None, max_length=500)
+    hint: str | None = Field(default=None, max_length=500)
+    app_name: str | None = Field(default=None, max_length=100)
+    task_name: str | None = Field(default=None, max_length=200)
+
+
+class QuickRenameInput(StrictModel):
+    task_name: str = Field(min_length=1, max_length=200)
+    app_name: str | None = Field(default=None, max_length=100)
+
+
+class ExportSkillInput(StrictModel):
+    output_dir: str | None = Field(default=None, max_length=1000)
+
+
+
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -128,9 +156,17 @@ class Store:
             # cannot be reconstructed safely from revision numbers alone.
             for row in db.execute('''SELECT id,data FROM sessions s WHERE NOT EXISTS
                 (SELECT 1 FROM procedure_revisions p WHERE p.session_id=s.id)''').fetchall():
-                procedure = json.loads(row['data'])['procedure']
+                try:
+                    procedure = json.loads(row['data'])['procedure']
+                    revision = procedure['revision']
+                except (KeyError, json.JSONDecodeError):
+                    # A legacy session with missing/corrupt procedure data is still
+                    # preserved in `sessions` (and stays accessible in the UI); it
+                    # simply has no procedure_revisions row to review. Never let one
+                    # bad row abort the whole migration.
+                    continue
                 db.execute('INSERT INTO procedure_revisions VALUES(?,?,?,?,?)',
-                           (row['id'], procedure['revision'], json.dumps(procedure), _now(), 'legacy_current'))
+                           (row['id'], revision, json.dumps(procedure), _now(), 'legacy_current'))
 
     def connect(self):
         db = sqlite3.connect(self.db_path, timeout=10)
@@ -175,6 +211,9 @@ class Store:
                 else:
                     raise HTTPException(409, f"Procedure changed or revision is invalid. Current revision is {current['revision']}; reload before editing and save changes as revision {current['revision'] + 1}.")
                 patch = {**patch, 'procedure': proposed}
+            if 'answers' in patch and isinstance(data.get('answers'), dict) and isinstance(patch['answers'], dict):
+                data['answers'].update(patch['answers'])
+                patch = {k: v for k, v in patch.items() if k != 'answers'}
             data.update(patch)
             db.execute('UPDATE sessions SET data=? WHERE id=?', (json.dumps(data), ident))
 
@@ -425,6 +464,242 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         for run in session["runs"]:
             if run["id"] == run_id: return run
         raise HTTPException(404, "run not found")
+
+    @app.put("/api/tasks/{task_id}/hybrid-recipe")
+    def put_hybrid_recipe(task_id: str, body: dict[str, Any]):
+        from .hybrid import save_hybrid_recipe
+        try:
+            recipe = save_hybrid_recipe(app.state.store, task_id, body)
+        except Exception as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return recipe.model_dump()
+
+    @app.get("/api/tasks/{task_id}/hybrid-recipe")
+    def get_task_hybrid_recipe(task_id: str):
+        from .hybrid import resolve_task_or_session_recipe
+        try:
+            recipe = resolve_task_or_session_recipe(app.state.store, task_id)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        return recipe.model_dump()
+
+    @app.post("/api/tasks/{task_id}/hybrid-run")
+    def run_task_hybrid(task_id: str, body: HybridRunInput | None = None):
+        from .hybrid import HybridRecipe, resolve_task_or_session_recipe
+        from .runner import execute_hybrid
+        payload = body or HybridRunInput()
+        if not payload.dry_run and not payload.user_approved_understanding:
+            raise HTTPException(
+                409,
+                "Real execution requires dry_run=false and explicit user_approved_understanding=true.",
+            )
+        try:
+            if payload.recipe is not None:
+                recipe = HybridRecipe.model_validate({**payload.recipe, "task_id": str(task_id)})
+            else:
+                recipe = resolve_task_or_session_recipe(app.state.store, task_id)
+            return execute_hybrid(
+                recipe=recipe,
+                parameters=payload.parameters,
+                target_dir=payload.target_dir,
+                dry_run=payload.dry_run,
+                user_approved_understanding=payload.user_approved_understanding,
+            )
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/quick-record")
+    def quick_record(body: QuickRecordInput | None = None):
+        from .hybrid import infer_quick_record_metadata, resolve_task_or_session_recipe
+        payload = body or QuickRecordInput()
+        with app.state.store.lock:
+            now = _now()
+            with app.state.store.connect() as db:
+                row_count = db.execute("SELECT COUNT(*) FROM training_tasks").fetchone()[0]
+                inferred = infer_quick_record_metadata(
+                    window_title=payload.window_title,
+                    file_path=payload.file_path,
+                    hint=payload.hint,
+                    app_name=payload.app_name,
+                    task_name=payload.task_name,
+                    existing_count=row_count,
+                )
+                app_name = inferred["app_name"]
+                base_task_name = inferred["task_name"]
+
+                app_row = db.execute("SELECT id, name FROM training_apps WHERE name=?", (app_name,)).fetchone()
+                if app_row is not None:
+                    aid = app_row["id"]
+                else:
+                    aid = str(uuid.uuid4())
+                    db.execute("INSERT INTO training_apps VALUES(?,?,?)", (aid, app_name, now))
+
+                final_task_name = base_task_name
+                suffix_num = 2
+                while db.execute(
+                    "SELECT 1 FROM training_tasks WHERE app_id=? AND name=?",
+                    (aid, final_task_name),
+                ).fetchone():
+                    final_task_name = f"{base_task_name} #{suffix_num}"
+                    suffix_num += 1
+
+                tid = str(uuid.uuid4())
+                sid = str(uuid.uuid4())
+                session_data = {
+                    "id": sid,
+                    "title": f"Training · {final_task_name}",
+                    "created_at": now,
+                    "notes": "",
+                    "answers": {
+                        "teaching_task_name": final_task_name,
+                        "teaching_goal": "",
+                        "teaching_done": "",
+                        "teaching_recording_confirmed": "no",
+                    },
+                    "procedure": {"revision": 1, "steps": []},
+                    "media_url": None,
+                    "runs": [],
+                }
+                db.execute("INSERT INTO sessions(id,data) VALUES(?,?)", (sid, json.dumps(session_data)))
+                db.execute(
+                    "INSERT INTO procedure_revisions VALUES(?,?,?,?,?)",
+                    (sid, 1, json.dumps(session_data["procedure"]), now, "saved"),
+                )
+                db.execute(
+                    "INSERT INTO training_tasks VALUES(?,?,?,?,?,?)",
+                    (tid, aid, final_task_name, 1, None, now),
+                )
+                db.execute(
+                    "INSERT INTO training_versions VALUES(?,?,?,?,?)",
+                    (tid, 1, sid, now, None),
+                )
+
+            recipe = resolve_task_or_session_recipe(app.state.store, tid)
+            card = recipe.to_recipe_card()
+            session_with_ctx = {**session_data, "training": {"version": 1}}
+            task_detail = {
+                "id": tid,
+                "app_id": aid,
+                "app_name": app_name,
+                "name": final_task_name,
+                "description": "",
+                "latest_version": 1,
+                "working_version": None,
+                "versions": [
+                    {
+                        "version": 1,
+                        "session_id": sid,
+                        "created_at": now,
+                        "parent_version": None,
+                        "status": "draft",
+                    }
+                ],
+                "session": session_with_ctx,
+            }
+            return {
+                "task_id": tid,
+                "app_id": aid,
+                "app_name": app_name,
+                "task_name": final_task_name,
+                "session_id": sid,
+                "session": session_with_ctx,
+                "task": task_detail,
+                "inferred": {**inferred, "task_name": final_task_name},
+                "recipe_card": card,
+            }
+
+    @app.put("/api/tasks/{task_id}/quick-rename")
+    def quick_rename_task(task_id: str, body: QuickRenameInput):
+        from .hybrid import get_hybrid_recipe, resolve_task_or_session_recipe, save_hybrid_recipe
+        new_name = body.task_name.strip()
+        if not new_name:
+            raise HTTPException(422, "task_name cannot be blank")
+        with app.state.store.lock:
+            with app.state.store.connect() as db:
+                task_row = db.execute("SELECT * FROM training_tasks WHERE id=?", (str(task_id),)).fetchone()
+                if task_row is not None:
+                    db.execute("UPDATE training_tasks SET name=? WHERE id=?", (new_name, str(task_id)))
+                    vrow = db.execute(
+                        "SELECT session_id FROM training_versions WHERE task_id=? AND version=?",
+                        (str(task_id), task_row["latest_version"]),
+                    ).fetchone()
+                    sid = vrow["session_id"] if vrow else None
+                else:
+                    sid = str(task_id)
+                if sid:
+                    srow = db.execute("SELECT data FROM sessions WHERE id=?", (sid,)).fetchone()
+                    if srow:
+                        sdata = json.loads(srow["data"])
+                        sdata["title"] = f"Training · {new_name}"
+                        sdata.setdefault("answers", {})["teaching_task_name"] = new_name
+                        db.execute("UPDATE sessions SET data=? WHERE id=?", (json.dumps(sdata), sid))
+            existing_recipe = get_hybrid_recipe(app.state.store, task_id)
+            if existing_recipe is not None:
+                save_hybrid_recipe(app.state.store, task_id, existing_recipe.model_copy(update={"title": new_name}))
+            recipe = resolve_task_or_session_recipe(app.state.store, task_id)
+            return {
+                "task_id": str(task_id),
+                "task_name": new_name,
+                "recipe_card": recipe.to_recipe_card(),
+            }
+
+    @app.get("/api/tasks/{task_id}/recipe-card")
+    def get_task_recipe_card(task_id: str):
+        from .hybrid import resolve_task_or_session_recipe
+        try:
+            recipe = resolve_task_or_session_recipe(app.state.store, task_id)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        return recipe.to_recipe_card()
+
+    @app.post("/api/tasks/{task_id}/export-skill")
+    def post_export_skill(task_id: str, body: ExportSkillInput | None = None):
+        from .hybrid import export_skill_bundle, resolve_task_or_session_recipe
+        payload = body or ExportSkillInput()
+        try:
+            recipe = resolve_task_or_session_recipe(app.state.store, task_id)
+            out_dir = Path(payload.output_dir) if payload.output_dir else (app.state.store.artifacts / "skills")
+            return export_skill_bundle(recipe, out_dir)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.get("/api/tools/openai")
+    def get_openai_tools():
+        from .hybrid import list_hybrid_recipes, resolve_task_or_session_recipe
+        recipes = list(list_hybrid_recipes(app.state.store))
+        seen_tasks = {r.task_id for r in recipes}
+        with app.state.store.connect() as db:
+            tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if "training_tasks" in tables:
+                for row in db.execute("SELECT id FROM training_tasks ORDER BY created_at DESC, id"):
+                    tid = row["id"]
+                    if tid not in seen_tasks:
+                        try:
+                            recipes.append(resolve_task_or_session_recipe(app.state.store, tid))
+                            seen_tasks.add(tid)
+                        except LookupError:
+                            pass
+        tools = []
+        seen_names = set()
+        for r in recipes:
+            tool = r.to_openai_tool()
+            fname = tool["function"]["name"]
+            if fname not in seen_names:
+                seen_names.add(fname)
+                tools.append(tool)
+        return {"tools": tools, "count": len(tools)}
+
+    @app.get("/api/universal-agents")
+    @app.get("/api/agents/detect")
+    def get_universal_agents():
+        from .hybrid import detect_universal_agents
+        return detect_universal_agents(data_dir=app.state.store.root)
 
     web_dir = _ASSET_DIR
     if web_dir.is_dir() and any(web_dir.iterdir()): app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")

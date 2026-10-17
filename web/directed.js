@@ -54,7 +54,9 @@
   }
   async function ensureSession() {
     const goal = $("directedGoal").value.trim(), done = $("directedDone").value.trim();
-    if (!goal || !done || !current?.id) throw new Error("Choose an app and save a task before recording.");
+    // A name-only task (no pre-record goal/done) can still record; goal/done are inferred
+    // later from the recording, so recording entry must not require them here.
+    if (!current?.id) throw new Error("Choose an app and save a task before recording.");
     current = await request(`/api/sessions/${current.id}`);
     const name = trainingTask?.name || current.answers?.teaching_task_name || "Task";
     if ((current.answers?.teaching_task_name || "Task") === name && current.answers?.teaching_goal === goal && current.answers?.teaching_done === done) return current;
@@ -250,5 +252,133 @@
   });
   $("directedEditDetails").onclick = () => { if (!busy && !recording) document.dispatchEvent(new CustomEvent("hmb-training-back-to-details")); };
   document.addEventListener("hmb-training-review", () => { showStage("review"); });
+
+  function renderRecipeCard(card) {
+    const panel = $("recipeCardPanel");
+    if (!panel || !card) return;
+    panel.replaceChildren();
+    add("p", "3-LINE RECIPE CARD", panel, "eyebrow");
+    add("h3", card.title || "Workflow Recipe", panel);
+    const dl = document.createElement("dl");
+    dl.className = "receipt-fields";
+    add("dt", "When you give me", dl);
+    add("dd", Array.isArray(card.when_you_give_me) ? card.when_you_give_me.join("; ") : String(card.when_you_give_me || ""), dl);
+    add("dt", "I will do", dl);
+    add("dd", Array.isArray(card.i_will_do) ? card.i_will_do.join(" → ") : String(card.i_will_do || ""), dl);
+    add("dt", "You will get", dl);
+    add("dd", String(card.you_will_get || ""), dl);
+    panel.append(dl);
+    panel.hidden = false;
+  }
+
+  async function refreshRecipeCard() {
+    const tid = trainingTask?.id || current?.id;
+    if (!tid || !$("recipeCardPanel")) return;
+    try {
+      const card = await request(`/api/tasks/${encodeURIComponent(tid)}/recipe-card`);
+      renderRecipeCard(card);
+    } catch {
+      /* ignore for sessions without recipe card */
+    }
+  }
+
+  if ($("quickRecordBegin")) {
+    $("quickRecordBegin").onclick = async () => {
+      if (busy || recording) return;
+      busy = true;
+      try {
+        const qr = await request("/api/quick-record", {method: "POST", body: JSON.stringify({})});
+        window.hmbShowView?.("directed");
+        for (const id of ["trainingAppStage", "trainingTaskStage", "trainingDescriptionStage"]) {
+          if ($(id)) $(id).hidden = true;
+        }
+        current = qr.session;
+        trainingTask = qr.task;
+        readOnly = false;
+        historicalView = false;
+        completeMedia = false;
+        $("directedGoal").value = "";
+        $("directedDone").value = "";
+        $("directedComplete").checked = false;
+        $("directedVideo").removeAttribute("src");
+        $("directedVideo").hidden = true;
+        if ($("quickRecordBanner")) {
+          $("quickRecordBanner").hidden = false;
+          $("quickRecordNameInput").value = qr.task_name || "Quick Workflow #1";
+        }
+        if ($("sandboxDiffOutput")) {
+          $("sandboxDiffOutput").hidden = true;
+          $("sandboxDiffOutput").replaceChildren();
+        }
+        showStage("record");
+        renderRecipeCard(qr.recipe_card);
+        say("Instant record ready. Record or import one example, or rename anytime.");
+      } catch (error) {
+        say(`Could not start instant record. ${error.message}`);
+      } finally {
+        busy = false;
+        refreshReady();
+      }
+    };
+  }
+
+  if ($("quickRecordSaveName")) {
+    $("quickRecordSaveName").onclick = async () => {
+      const tid = trainingTask?.id || current?.id;
+      const newName = $("quickRecordNameInput")?.value.trim();
+      if (!tid || !newName || busy) return;
+      busy = true;
+      try {
+        const res = await request(`/api/tasks/${encodeURIComponent(tid)}/quick-rename`, {
+          method: "PUT",
+          body: JSON.stringify({task_name: newName}),
+        });
+        if (trainingTask) trainingTask.name = res.task_name;
+        if (current?.answers) current.answers.teaching_task_name = res.task_name;
+        showStage("record");
+        renderRecipeCard(res.recipe_card);
+        say(`Renamed workflow to ${res.task_name}.`);
+      } catch (error) {
+        say(`Could not rename workflow. ${error.message}`);
+      } finally {
+        busy = false;
+        refreshReady();
+      }
+    };
+  }
+
+  if ($("sandboxDryRunBtn")) {
+    $("sandboxDryRunBtn").onclick = async () => {
+      const tid = trainingTask?.id || current?.id;
+      if (!tid || busy) return;
+      busy = true;
+      $("sandboxDryRunBtn").disabled = true;
+      try {
+        const res = await request(`/api/tasks/${encodeURIComponent(tid)}/hybrid-run`, {
+          method: "POST",
+          body: JSON.stringify({dry_run: true}),
+        });
+        const out = $("sandboxDiffOutput");
+        if (out) {
+          out.replaceChildren();
+          const diff = res.before_after_diff || {};
+          const filesAfter = (diff.files_after || []).join(", ");
+          add(
+            "p",
+            `Sandbox Dry-Run ${res.status === "verified" ? "Verified" : "Needs Agent Assist"} (real files untouched). Files after: ${filesAfter}`,
+            out
+          );
+          out.hidden = false;
+        }
+        await refreshRecipeCard();
+      } catch (error) {
+        say(`Sandbox dry-run failed. ${error.message}`);
+      } finally {
+        busy = false;
+        $("sandboxDryRunBtn").disabled = false;
+        refreshReady();
+      }
+    };
+  }
 
 })();

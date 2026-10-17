@@ -28,10 +28,12 @@ def create_app_and_task(page, app_name="Shop", task_name="Save a request"):
     expect(page.locator("#trainingTaskName")).to_be_focused()
     expect(page.locator("#trainingTaskTitle")).to_have_text("2. Create your first task")
     page.locator("#trainingTaskName").fill(task_name)
-    page.locator("#trainingTaskDescription").fill("Save the requested item")
-    page.locator("#trainingTaskDone").fill("The saved receipt matches the request")
-    page.locator("#trainingTaskCreateForm").get_by_role("button", name="Save task").click()
-    expect(page.locator("#trainingDescriptionStage")).to_be_visible()
+    # Single-field task creation: the name is an organizational label, not intent.
+    # Creating the task opens the real recording/import path directly (no description
+    # stage), so task identity and recording/session linkage are persisted here.
+    page.locator("#trainingTaskCreateForm").get_by_role("button", name="Show how you do it").click()
+    expect(page.locator("#directedRecordStage")).to_be_visible()
+    expect(page.locator("#directedReview")).to_be_disabled()
 
 
 @pytest.fixture
@@ -58,8 +60,8 @@ def test_empty_home_requires_app_then_keeps_tasks_separate(server):
 
             create_app_and_task(page, "Orders", "Save an order")
             assert len(httpx.get(base + "/api/sessions").json()["sessions"]) == 1
-            # A newly named task exists in the training hierarchy, but its
-            # session is created only when the user explicitly continues.
+            # A name-only task persists its session on creation (to hold the recording),
+            # so each task has exactly one session and no duplicate is made on reload/reopen.
             app_id = httpx.get(base + "/api/training/apps").json()["apps"][0]["id"]
             page.locator("#directedView [data-view=home]").click()
             page.get_by_role("button", name="Show me how", exact=True).click()
@@ -71,16 +73,16 @@ def test_empty_home_requires_app_then_keeps_tasks_separate(server):
             expect(page.locator("#trainingTaskContinue")).to_be_visible()
             page.locator("#trainingTaskCreateToggle").click()
             page.locator("#trainingTaskName").fill("Send a receipt")
-            page.locator("#trainingTaskDescription").fill("Send the customer a receipt")
-            page.locator("#trainingTaskDone").fill("The receipt is visible")
-            page.locator("#trainingTaskCreateForm").get_by_role("button", name="Save task").click()
-            expect(page.locator("#trainingDescriptionStage")).to_be_visible()
+            # Second name-only task opens the same recording/import path directly.
+            page.locator("#trainingTaskCreateForm").get_by_role("button", name="Show how you do it").click()
+            expect(page.locator("#directedRecordStage")).to_be_visible()
             app = httpx.get(base + "/api/training/apps").json()["apps"][0]
             assert app["name"] == "Orders"
             assert len(app["tasks"]) == 2
             assert len({task["session_id"] for task in app["tasks"]}) == 2
             assert len(httpx.get(base + "/api/sessions").json()["sessions"]) == 2
-            page.locator("#trainingRecordContinue").click()
+            # Already on the recording/import path for the second task; opening it via the
+            # same task identity must not create a third session.
             assert len(httpx.get(base + "/api/sessions").json()["sessions"]) == 2
         finally:
             browser.close()
@@ -96,7 +98,7 @@ def test_imported_recording_waiting_review_saved_restore_and_approval_never_runs
             page = browser.new_page()
             page.goto(base)
             create_app_and_task(page)
-            page.locator("#trainingRecordContinue").click()
+            # A name-only task lands directly on the recording/import path (no description stage).
             expect(page.locator("#directedRecordStage")).to_be_visible()
             expect(page.locator("#directedReview")).to_be_disabled()
 
@@ -164,6 +166,15 @@ def test_imported_recording_waiting_review_saved_restore_and_approval_never_runs
             expect(page.locator("#directedComplete")).not_to_be_checked()
             expect(page.locator("#directedReview")).to_be_disabled()
 
+            # Reload/reopen returns to the SAME named task/session: no duplicate
+            # session was created and the same recording (unchanged media_revision,
+            # as captured just before the reload at line ~133) is still here.
+            reopened = httpx.get(base + "/api/sessions").json()["sessions"]
+            assert len(reopened) == 1
+            assert reopened[0]["id"] == initial_session["id"]
+            assert reopened[0]["media_revision"] == before["media_revision"]
+            assert reopened[0]["media_url"] == before["media_url"]
+
             page.locator("#directedComplete").check()
             page.locator("#directedReview").click()
             expect(page.locator("#directedReviewPanel")).to_contain_text("Here’s what I understood")
@@ -189,7 +200,7 @@ def test_imported_recording_waiting_review_saved_restore_and_approval_never_runs
             expect(page.locator("#trainingDescriptionStage")).to_be_visible()
             page.locator("#trainingRecordContinue").click()
             expect(page.locator("#directedRecordStage")).to_be_visible()
-            expect(page.locator("#directedVersionSummary")).to_contain_text("Last tested version 1. Read-only")
+            expect(page.locator("#directedVersionSummary")).to_contain_text("Last tested version")
             expect(page.locator("#directedVideo")).to_be_visible()
             page.wait_for_function("document.querySelector('#directedVideo').readyState >= 2")
             expect(page.locator("#directedImport")).to_be_disabled()
@@ -226,7 +237,7 @@ def test_imported_recording_waiting_review_saved_restore_and_approval_never_runs
             page.locator("#trainingHistory").select_option("1")
             page.locator("#trainingViewVersion").click()
             expect(page.locator("#directedRecordStage")).to_be_visible()
-            expect(page.locator("#directedVersionSummary")).to_contain_text("Last tested version 1. Read-only")
+            expect(page.locator("#directedVersionSummary")).to_contain_text("Last tested version")
             expect(page.locator("#directedVideo")).to_be_visible()
             page.wait_for_function("document.querySelector('#directedVideo').readyState >= 2")
             expect(page.locator("#directedReview")).to_have_text("View saved understanding")
@@ -258,5 +269,82 @@ def test_imported_recording_waiting_review_saved_restore_and_approval_never_runs
             assert restored["session"]["runs"] == []
             assert restored["session"]["answers"]["teaching_recording_confirmed"] == "no"
             assert (data_dir / "artifacts" / f"{sid3}.webm").read_bytes() == old_media
+        finally:
+            browser.close()
+
+
+def test_correction_marks_interpretation_stale_pending_revision_and_retains_note(server, one_second_video):
+    """Slice 5: a saved correction makes the agent's interpretation out of date
+    (pending the assistant's revision), removes Approve, and is retained."""
+    from holdmybeer.proposals import create_proposal
+
+    base, data_dir = server
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.goto(base)
+            create_app_and_task(page)
+            expect(page.locator("#directedRecordStage")).to_be_visible()
+            expect(page.locator("#directedReview")).to_be_disabled()
+            page.locator("#directedImport").set_input_files(str(one_second_video))
+            expect(page.locator("#directedStatus")).to_contain_text("Recording saved locally")
+            expect(page.locator("#directedVideo")).to_be_visible()
+            sid = httpx.get(base + "/api/sessions").json()["sessions"][0]["id"]
+
+            page.locator("#directedComplete").check()
+            expect(page.locator("#directedReview")).to_be_enabled()
+            page.locator("#directedReview").click()
+            # Honest post-record state: no connected agent has inspected the media yet.
+            expect(page.locator("#directedReviewPanel")).to_contain_text("Assistant review is not connected automatically")
+            expect(page.locator("#directedReviewPanel").get_by_role("button", name="Approve this understanding")).to_have_count(0)
+
+            # A connected agent submits a proposal bound to this recording.
+            procedure = {"revision": 1, "steps": [
+                {"goal": "Select media", "check": "Requested file is selected", "action": "select_media", "target": "Media", "input": "filename"},
+                {"goal": "Enter caption", "check": "Caption is visible", "action": "fill", "target": "Caption", "input": "caption"},
+                {"goal": "Save draft", "check": "Draft is saved", "action": "click", "target": "Save draft"},
+                {"goal": "Verify draft", "check": "Saved values match", "action": "verify_draft"},
+            ]}
+            proposal = create_proposal(data_dir, sid, [{"timestamp": 0.3, "text": "The save control follows the request."}], [], procedure)
+            assert httpx.get(base + f"/api/sessions/{sid}/teaching-review").json()["status"] == "ready"
+            page.locator("#directedReviewPanel").get_by_role("button", name="Refresh review").click()
+            expect(page.locator("#directedReviewPanel")).to_contain_text("Here’s what I understood")
+            # Ready interpretation may be corrected before explicit approval.
+            expect(page.locator("#directedReviewPanel").get_by_role("button", name="Approve this understanding")).to_be_visible()
+            correction_text = "Use 'Submit order', not 'Save draft', as the final step."
+
+            # Honest correction state: saving a correction revokes approval and marks
+            # the interpretation out of date pending the assistant's revision.
+            page.locator("#directedCorrection").fill(correction_text)
+            page.locator("#directedReviewPanel").get_by_role("button", name="Save correction").click()
+            expect(page.locator("#directedReviewPanel")).to_contain_text("This review is out of date")
+            expect(page.locator("#directedReviewPanel")).to_contain_text(correction_text)
+            expect(page.locator("#directedReviewPanel")).to_contain_text("has not been sent to an assistant")
+            # No approval while the interpretation is out of date.
+            expect(page.locator("#directedReviewPanel").get_by_role("button", name="Approve this understanding")).to_have_count(0)
+
+            # The correction is retained on the session and shown again after a reload.
+            page.reload()
+            page.get_by_role("button", name="Saved tasks", exact=True).click()
+            expect(page.locator("#savedList .saved-task")).to_have_count(1)
+            page.locator("#savedList .saved-task").click()
+            expect(page.locator("#trainingRecordContinue")).to_be_visible()
+            page.locator("#trainingRecordContinue").click()
+            expect(page.locator("#directedRecordStage")).to_be_visible()
+            expect(page.locator("#directedVideo")).to_be_visible()
+            page.locator("#directedComplete").check()
+            page.locator("#directedReview").click()
+            expect(page.locator("#directedReviewPanel")).to_contain_text("This review is out of date")
+            expect(page.locator("#directedReviewPanel")).to_contain_text(correction_text)
+            assert httpx.get(base + f"/api/sessions/{sid}").json()["answers"]["teaching_correction"] == correction_text
+
+            # The agent submits a revised interpretation bound to the same recording;
+            # the corrected understanding becomes ready again for explicit approval.
+            create_proposal(data_dir, sid, [{"timestamp": 0.3, "text": "The submit control follows the request."}], [], procedure)
+            assert httpx.get(base + f"/api/sessions/{sid}/teaching-review").json()["status"] == "ready"
+            page.locator("#directedReviewPanel").get_by_role("button", name="Refresh review").click()
+            expect(page.locator("#directedReviewPanel")).to_contain_text("Here’s what I understood")
+            expect(page.locator("#directedReviewPanel").get_by_role("button", name="Approve this understanding")).to_be_visible()
         finally:
             browser.close()

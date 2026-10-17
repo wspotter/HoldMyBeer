@@ -280,7 +280,16 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         peer = request.client.host if request.client else "127.0.0.1"
         if peer not in {"127.0.0.1", "::1", "testclient"}:
             return Response("loopback clients only", status_code=403)
-        return await call_next(request)
+        if request.url.path in {"/", "/index.html", "/app.js", "/simple.js", "/training.js", "/directed.js", "/briefs.js", "/style.css"}:
+            request.scope["headers"] = [
+                (k, v) for (k, v) in request.scope.get("headers", [])
+                if k.lower() not in {b"if-none-match", b"if-modified-since"}
+            ]
+        response = await call_next(request)
+        if request.url.path in {"/", "/index.html", "/app.js", "/simple.js", "/training.js", "/directed.js", "/briefs.js", "/style.css"}:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+        return response
 
     @app.get("/api/status")
     def status(): return {"version": VERSION, "analysis": "manual", "runner": "bundled-browser", "procedure_runner": "reviewed-fixture-actions", "supported_workflows": ["fixture", "github-issue-brief"], "hermes": "mcp-client"}

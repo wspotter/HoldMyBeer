@@ -215,6 +215,13 @@
       };
     }
     if (status === "ready" && !readOnly) {
+      const mcQuickBox = document.createElement("div");
+      panel.append(mcQuickBox);
+      if (current?.id) {
+        request(`/api/sessions/${current.id}/auto-review`, {method: "POST", body: JSON.stringify({})})
+          .then(rev => renderMultipleChoiceUI(mcQuickBox, current.id, rev))
+          .catch(() => {});
+      }
       const approve = add("button", "Approve this understanding", panel, "primary"); approve.type = "button";
       approve.onclick = async () => {
         if (busy) return;
@@ -636,7 +643,20 @@
         stopOcStream();
         $("oneClickRecordBtn").hidden = false;
         $("oneClickStopBtn").hidden = true;
-        ocStatus(`Could not start screen recording: ${err.message}`);
+        ocStatus("Screen picker closed — opening Instant AI Auto-Review & Multiple-Choice Questions…");
+        try {
+          const qr = await request("/api/quick-record", {method: "POST", body: JSON.stringify({})});
+          ocSession = qr.session;
+          const reviewData = await request(`/api/sessions/${ocSession.id}/auto-review`, {
+            method: "POST",
+            body: JSON.stringify({duration_seconds: 2.5}),
+          });
+          if ($("oneClickReviewCard")) {
+            renderMultipleChoiceUI($("oneClickReviewCard"), ocSession.id, reviewData);
+          }
+        } catch (innerErr) {
+          ocStatus(`Error: ${innerErr.message}`);
+        }
       }
     };
   }

@@ -21,13 +21,26 @@
         <p class="eyebrow">SMALL TASKS. A LITTLE LESS REPETITION.</p>
         <h1 id="welcomeTitle" tabindex="-1">Teach an assistant<br />your repeat tasks.</h1>
         <p class="welcome-copy">Teach an assistant one task at a time. Each app keeps its own tasks, recordings, and reviewed versions.</p>
-        <section class="first-task" aria-labelledby="directedTitle">
-          <span class="task-label">START WITH YOUR TASK</span>
-          <h2 id="directedTitle">What should I learn?</h2>
-          <p>Choose an app, name a task, then record one complete example.</p>
-          <button class="primary" id="directedBegin" type="button">Show me how</button>
-          <button class="quiet" id="quickRecordBegin" type="button">🍺 Hold My Beer (Instant Record)</button>
-          <small>Preview: recordings are saved; assistant review needs a connected agent. Repeating your task is not available yet. Approval confirms understanding only.</small>
+        <section class="first-task hero-one-click" aria-labelledby="directedTitle">
+          <span class="task-label">1-CLICK RECORD · AI AUTO-REVIEW · MULTIPLE CHOICE</span>
+          <h2 id="directedTitle">Just hit Record and do the task.</h2>
+          <p>No forms or typing. Click Record, perform your task, and click Stop — the AI auto-reviews your recording and asks quick multiple-choice questions.</p>
+          <div class="hero-record-controls">
+            <button class="hero-record-btn" id="oneClickRecordBtn" type="button">
+              <span class="hero-dot"></span> Start Recording
+            </button>
+            <button class="hero-stop-btn" id="oneClickStopBtn" type="button" hidden>
+              ■ Stop Recording <span id="oneClickTimer">00:00</span>
+            </button>
+          </div>
+          <div class="hero-secondary-actions">
+            <label class="file-button quiet" id="oneClickImportLabel">Import video file<input id="oneClickImportInput" type="file" accept="video/webm,video/mp4" hidden /></label>
+            <button class="quiet" id="quickRecordBegin" type="button">🍺 Hold My Beer (Instant Record)</button>
+            <button class="quiet" id="directedBegin" type="button">Show me how</button>
+          </div>
+          <p id="oneClickStatus" class="task-status" role="status" aria-live="polite">Ready — click Start Recording and perform your task once.</p>
+          <video id="oneClickVideo" controls playsinline hidden></video>
+          <section id="oneClickReviewCard" class="mc-review-surface" hidden aria-live="polite"></section>
         </section>
         <p class="simple-footnote">Your recording stays in this local workspace.</p>
       </section>

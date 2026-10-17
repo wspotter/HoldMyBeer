@@ -104,3 +104,43 @@ def test_browser_instant_record_button_opens_record_stage_with_recipe_card_and_s
             expect(page.locator("#sandboxDiffOutput")).to_contain_text("summary.md")
         finally:
             browser.close()
+
+
+def test_zero_typing_auto_review_and_multiple_choice_answers(tmp_path):
+    from fastapi.testclient import TestClient
+    from holdmybeer.app import create_app
+
+    app = create_app(data_dir=tmp_path)
+    client = TestClient(app)
+
+    # 1. Start 1-click quick record
+    qr = client.post("/api/quick-record", json={"window_title": "Terminal - nslookup google.com"}).json()
+    sid = qr["session_id"]
+
+    # 2. Trigger auto-review immediately after stop
+    rev = client.post(f"/api/sessions/{sid}/auto-review", json={"window_title": "Terminal - nslookup", "duration_seconds": 3.2})
+    assert rev.status_code == 200
+    rev_data = rev.json()
+    assert rev_data["status"] == "ready"
+    assert len(rev_data["multiple_choice_questions"]) == 4
+    assert rev_data["multiple_choice_questions"][0]["selected"] == "terminal_cmd"
+
+    # 3. Tap multiple-choice answers and confirm with sandbox dry-run
+    ans = client.post(
+        f"/api/sessions/{sid}/answer-choices",
+        json={
+            "selected_name": "DNS Lookup (nslookup)",
+            "choices": {
+                "q_action": "terminal_cmd",
+                "q_input": "ask_each_time",
+                "q_done": "window_minimized",
+                "q_safety": "sandbox_first",
+            },
+            "run_sandbox": True,
+        },
+    )
+    assert ans.status_code == 200
+    ans_data = ans.json()
+    assert ans_data["status"] == "approved_and_verified"
+    assert ans_data["task_name"] == "DNS Lookup (nslookup)"
+    assert ans_data["sandbox_result"]["status"] == "verified"

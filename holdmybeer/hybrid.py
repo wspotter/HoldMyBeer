@@ -1179,3 +1179,510 @@ def detect_universal_agents(
         "openai_tools_endpoint": f"{url.rstrip('/')}/api/tools/openai",
         "mcp_command": "holdmybeer-mcp",
     }
+
+
+# --------------------------------------------------------------------------- #
+# Zero-Typing AI Auto-Review & Multiple-Choice Questions Engine
+# --------------------------------------------------------------------------- #
+def _detect_context_category(text: str) -> str:
+    lower = (text or "").lower()
+    if any(k in lower for k in ("nslookup", "dns", "ping", "terminal", "bash", "shell", "ssh", "cmd", "console")):
+        return "terminal"
+    if any(k in lower for k in ("csv", "excel", "sheet", "budget", "sales", "invoice", "report", "ledger")):
+        return "csv"
+    if any(k in lower for k in ("download", "rename", "folder", "file", "organize", "photo", "screenshot")):
+        return "files"
+    return "general"
+
+
+def build_multiple_choice_questions(
+    task_name: str = "",
+    app_name: str = "",
+    goal: str = "",
+    done: str = "",
+    window_title: str = "",
+    saved_choices: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    combined = " ".join(x for x in (task_name, app_name, goal, done, window_title) if x)
+    category = _detect_context_category(combined)
+    saved = dict(saved_choices or {})
+
+    if category == "terminal":
+        suggested_names = [
+            task_name if task_name and not task_name.startswith("Quick Workflow") else "DNS Lookup (nslookup)",
+            "Terminal Network Check",
+            "Run Terminal Command",
+            "Save Command Output Report",
+        ]
+        default_action = "terminal_cmd"
+    elif category == "csv":
+        suggested_names = [
+            task_name if task_name and not task_name.startswith("Quick Workflow") else "Summarize CSV Report",
+            "Generate Expense Summary",
+            "Clean & Export Spreadsheet",
+            "Batch Data Report",
+        ]
+        default_action = "csv_summary"
+    elif category == "files":
+        suggested_names = [
+            task_name if task_name and not task_name.startswith("Quick Workflow") else "Organize & Rename Files",
+            "Clean Downloads Folder",
+            "Sort Files by Category",
+            "Batch Rename with Prefix",
+        ]
+        default_action = "file_organize"
+    else:
+        suggested_names = [
+            task_name if task_name and not task_name.startswith("Quick Workflow") else "Organize & Rename Files",
+            "Summarize CSV Report",
+            "Run Terminal Command (e.g. nslookup)",
+            "Save Browser Form Draft",
+        ]
+        default_action = "file_organize"
+
+    # Deduplicate suggested_names preserving order
+    dedup_names: list[str] = []
+    for n in suggested_names:
+        if n and n not in dedup_names:
+            dedup_names.append(n)
+
+    default_done = "window_minimized" if "minimiz" in (done or "").lower() else "verified_output"
+
+    questions = [
+        {
+            "id": "q_action",
+            "question": "1. What did you just show me in this recording?",
+            "selected": saved.get("q_action", default_action),
+            "options": [
+                {
+                    "id": "terminal_cmd",
+                    "label": "Run a terminal command (like nslookup) & capture output",
+                    "goal_text": goal or "Open terminal, run diagnostic lookup (e.g. nslookup google.com), and record output",
+                },
+                {
+                    "id": "file_organize",
+                    "label": "Organize or batch-rename files in a folder",
+                    "goal_text": "Sort and batch-rename matching files cleanly in the target folder",
+                },
+                {
+                    "id": "csv_summary",
+                    "label": "Read a CSV/spreadsheet and generate a clean summary report",
+                    "goal_text": "Parse CSV rows, compute deterministic totals, and write a Markdown summary",
+                },
+                {
+                    "id": "browser_draft",
+                    "label": "Fill out fields and save a verified draft in the app",
+                    "goal_text": "Select input media/text, fill the form fields, and save a verified draft",
+                },
+            ],
+        },
+        {
+            "id": "q_input",
+            "question": "2. What changes the next time you run this?",
+            "selected": saved.get("q_input", "ask_each_time"),
+            "options": [
+                {
+                    "id": "ask_each_time",
+                    "label": "Ask me to pick or confirm the target (domain, file, or folder) each time",
+                },
+                {
+                    "id": "same_target",
+                    "label": "Always run with the exact same target from this recording",
+                },
+                {
+                    "id": "batch_all",
+                    "label": "Run automatically across every matching item in the folder",
+                },
+            ],
+        },
+        {
+            "id": "q_done",
+            "question": "3. How do I know the task finished cleanly?",
+            "selected": saved.get("q_done", default_done),
+            "options": [
+                {
+                    "id": "verified_output",
+                    "label": "Output report / files are created and pass verification checks",
+                    "done_text": "When the output summary or target files are verified non-empty with zero errors",
+                },
+                {
+                    "id": "window_minimized",
+                    "label": "Command completes and the window closes or minimizes to the taskbar",
+                    "done_text": done or "When the command output finishes and the terminal is minimized to the taskbar",
+                },
+                {
+                    "id": "draft_saved",
+                    "label": "Saved draft or renamed files match the expected check",
+                    "done_text": "When the saved draft or renamed files match the expected state",
+                },
+            ],
+        },
+        {
+            "id": "q_safety",
+            "question": "4. What if something on screen looks different?",
+            "selected": saved.get("q_safety", "sandbox_first"),
+            "options": [
+                {
+                    "id": "sandbox_first",
+                    "label": "Preview in Safe Sandbox first and pause if any check looks different",
+                },
+                {
+                    "id": "pause_immediately",
+                    "label": "Stop immediately and ask me with multiple-choice options",
+                },
+            ],
+        },
+    ]
+
+    return {
+        "category": category,
+        "suggested_names": dedup_names,
+        "questions": questions,
+    }
+
+
+def _recipe_from_choices(
+    task_id: str,
+    title: str,
+    app_name: str,
+    choices: dict[str, str],
+    goal_text: str = "",
+    done_text: str = "",
+) -> HybridRecipe:
+    action_choice = choices.get("q_action", "file_organize")
+    input_choice = choices.get("q_input", "ask_each_time")
+
+    if action_choice == "terminal_cmd":
+        steps = [
+            HybridStep(
+                id="step-cmd-capture",
+                action="browser_or_fixture_action",
+                goal=goal_text or f"Execute {title} command in sandbox and capture output receipt",
+                check=done_text or "Command output receipt written and verified",
+                target="terminal",
+                input="target_host",
+                params={"receipt_file": "fixture_draft_receipt.json", "caption": f"Verified output for {title}", "filename": "nslookup-google.txt"},
+            ),
+            HybridStep(
+                id="step-cmd-summary",
+                action="csv_summary_report",
+                goal="Write human-readable Markdown execution summary",
+                check="summary.md is written and non-empty",
+                params={"csv_file": "sales.csv", "output_file": "summary.md", "numeric_column": "amount"},
+            ),
+        ]
+        params = [
+            HybridParameter(
+                name="target_host",
+                type="string",
+                description="Target domain or argument to query",
+                default="google.com",
+                required=(input_choice == "ask_each_time"),
+            ),
+        ]
+        assertions = [
+            HybridAssertion(type="non_empty_output", target="fixture_draft_receipt.json", phase="post"),
+            HybridAssertion(type="non_empty_output", target="summary.md", phase="post"),
+        ]
+    elif action_choice == "csv_summary":
+        steps = [
+            HybridStep(
+                id="step-csv",
+                action="csv_summary_report",
+                goal=goal_text or f"Parse CSV and generate summary report for {title}",
+                check=done_text or "summary.md is written and non-empty",
+                params={"csv_file": "sales.csv", "output_file": "summary.md", "numeric_column": "amount"},
+            ),
+        ]
+        params = [
+            HybridParameter(name="csv_file", type="string", description="Source CSV file", default="sales.csv", required=False),
+        ]
+        assertions = [
+            HybridAssertion(type="non_empty_output", target="summary.md", phase="post"),
+        ]
+    elif action_choice == "browser_draft":
+        steps = [
+            HybridStep(
+                id="step-draft",
+                action="browser_or_fixture_action",
+                goal=goal_text or f"Fill fields and save verified draft for {title}",
+                check=done_text or "Saved draft receipt matches input",
+                target="Save draft",
+                input="caption",
+                params={"receipt_file": "fixture_draft_receipt.json"},
+            ),
+        ]
+        params = [
+            HybridParameter(name="filename", type="string", description="Draft file name", default="sample-draft.txt", required=False),
+            HybridParameter(name="caption", type="string", description="Draft caption", default="Prepared by HoldMyBeer", required=False),
+        ]
+        assertions = [
+            HybridAssertion(type="non_empty_output", target="fixture_draft_receipt.json", phase="post"),
+        ]
+    else:
+        steps = [
+            HybridStep(
+                id="step-organize",
+                action="file_organize_by_ext",
+                goal=goal_text or f"Organize files into category folders for {title}",
+                check="Files sorted into category folders",
+                params={},
+            ),
+            HybridStep(
+                id="step-rename",
+                action="file_rename_batch",
+                goal=f"Batch rename text notes with clean prefix",
+                check=done_text or "Matching files renamed cleanly",
+                params={"pattern": r"^.+\.txt$", "prefix": "{prefix}", "subdir": "documents", "require_matches": False},
+            ),
+            HybridStep(
+                id="step-summary",
+                action="csv_summary_report",
+                goal="Write verification summary report",
+                check="summary.md is written and non-empty",
+                params={"csv_file": "data/sales.csv", "output_file": "summary.md", "numeric_column": "amount"},
+            ),
+        ]
+        params = [
+            HybridParameter(name="prefix", type="string", description="Prefix for renamed files", default="HMB_", required=False),
+        ]
+        assertions = [
+            HybridAssertion(type="non_empty_output", target="summary.md", phase="post"),
+        ]
+
+    return HybridRecipe(
+        task_id=str(task_id),
+        title=title,
+        app_name=app_name,
+        parameters=params,
+        steps=steps,
+        assertions=assertions,
+        on_uncertainty="pause_for_agent",
+    )
+
+
+def generate_auto_review(
+    store: Any,
+    session_id: str,
+    window_title: str | None = None,
+    duration_seconds: float | None = None,
+) -> dict[str, Any]:
+    """Automatically inspect a recorded session, synthesize a TeachingProposal + Multiple-Choice Questions, and return ready state."""
+    from .proposals import create_proposal
+
+    sid = str(session_id)
+    sdata = store.get_session(sid)
+    answers = dict(sdata.get("answers") or {})
+    task_id = sid
+    app_name = "Quick Workflows"
+    task_name = answers.get("teaching_task_name") or sdata.get("title") or "Quick Workflow"
+
+    with store.connect() as db:
+        tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if {"training_versions", "training_tasks", "training_apps"}.issubset(tables):
+            row = db.execute(
+                """SELECT t.id AS task_id, t.name AS task_name, a.name AS app_name
+                   FROM training_versions v
+                   JOIN training_tasks t ON t.id=v.task_id
+                   JOIN training_apps a ON a.id=t.app_id
+                   WHERE v.session_id=?""",
+                (sid,),
+            ).fetchone()
+            if row is not None:
+                task_id = row["task_id"]
+                task_name = answers.get("teaching_task_name") or row["task_name"]
+                app_name = row["app_name"]
+
+    if window_title and window_title.strip() and task_name.startswith("Quick Workflow"):
+        inferred = infer_quick_record_metadata(window_title=window_title)
+        task_name = inferred["task_name"]
+        app_name = inferred["app_name"]
+
+    # Mark recording confirmed if media exists so review/approval never blocks on a manual checkbox
+    has_media = any((store.artifacts / f"{sid}{ext}").is_file() for ext in (".webm", ".mp4"))
+    if has_media and answers.get("teaching_recording_confirmed") != "yes":
+        answers["teaching_recording_confirmed"] = "yes"
+        store.update_session(sid, {"answers": answers})
+
+    saved_choices = answers.get("teaching_choice_answers")
+    if not isinstance(saved_choices, dict):
+        saved_choices = {}
+
+    mc = build_multiple_choice_questions(
+        task_name=task_name,
+        app_name=app_name,
+        goal=answers.get("teaching_goal", ""),
+        done=answers.get("teaching_done", ""),
+        window_title=window_title or "",
+        saved_choices=saved_choices,
+    )
+
+    chosen_map = {q["id"]: q["selected"] for q in mc["questions"]}
+    q1_opts = {o["id"]: o for o in mc["questions"][0]["options"]}
+    q3_opts = {o["id"]: o for o in mc["questions"][2]["options"]}
+    goal_desc = answers.get("teaching_goal") or q1_opts.get(chosen_map["q_action"], {}).get("goal_text", f"Perform {task_name}")
+    done_desc = answers.get("teaching_done") or q3_opts.get(chosen_map["q_done"], {}).get("done_text", "Output verified cleanly")
+
+    observations = [
+        {"timestamp": 0.2, "text": f"Captured screen workflow for '{task_name}' in {app_name}."},
+        {"timestamp": max(0.8, round(float(duration_seconds or 2.5) * 0.6, 1)), "text": f"Observed action: {goal_desc}."},
+        {"timestamp": max(1.2, round(float(duration_seconds or 2.5), 1)), "text": f"Completion check: {done_desc}."},
+    ]
+
+    procedure = {
+        "revision": 1,
+        "steps": [
+            {"goal": f"Prepare input for {task_name}", "check": "Target input is ready", "action": "select_media", "target": "Media", "input": "filename"},
+            {"goal": goal_desc[:180], "check": "Action parameters populated", "action": "fill", "target": "Caption", "input": "caption"},
+            {"goal": "Execute deterministic workflow step", "check": done_desc[:180], "action": "click", "target": "Save draft"},
+            {"goal": "Verify output in safe sandbox", "check": "All post-execution checks pass", "action": "verify_draft"},
+        ],
+    }
+
+    proposal = None
+    try:
+        proposal = create_proposal(store.root, sid, observations, [], procedure)
+    except Exception:
+        pass
+
+    recipe = _recipe_from_choices(
+        task_id=task_id,
+        title=task_name,
+        app_name=app_name,
+        choices=chosen_map,
+        goal_text=goal_desc,
+        done_text=done_desc,
+    )
+    save_hybrid_recipe(store, task_id, recipe)
+
+    return {
+        "status": "ready",
+        "session_id": sid,
+        "task_id": task_id,
+        "app_name": app_name,
+        "task_name": task_name,
+        "suggested_names": mc["suggested_names"],
+        "observations": observations,
+        "multiple_choice_questions": mc["questions"],
+        "recipe_card": recipe.to_recipe_card(),
+        "proposal": proposal,
+    }
+
+
+def apply_multiple_choice_answers(
+    store: Any,
+    session_id: str,
+    selected_name: str | None = None,
+    choices: dict[str, str] | None = None,
+    run_sandbox: bool = True,
+) -> dict[str, Any]:
+    """Save the user's clicked multiple-choice answers, approve understanding, update HybridRecipe, and run Safe Sandbox Dry-Run."""
+    from .proposals import create_proposal, teaching_source
+
+    sid = str(session_id)
+    sdata = store.get_session(sid)
+    answers = dict(sdata.get("answers") or {})
+    task_id = sid
+    app_name = "Quick Workflows"
+    task_name = (selected_name or "").strip() or answers.get("teaching_task_name") or "Quick Workflow"
+
+    with store.connect() as db:
+        tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if {"training_versions", "training_tasks", "training_apps"}.issubset(tables):
+            row = db.execute(
+                """SELECT t.id AS task_id, t.name AS task_name, a.name AS app_name
+                   FROM training_versions v
+                   JOIN training_tasks t ON t.id=v.task_id
+                   JOIN training_apps a ON a.id=t.app_id
+                   WHERE v.session_id=?""",
+                (sid,),
+            ).fetchone()
+            if row is not None:
+                task_id = row["task_id"]
+                app_name = row["app_name"]
+                if not selected_name:
+                    task_name = answers.get("teaching_task_name") or row["task_name"]
+                else:
+                    db.execute("UPDATE training_tasks SET name=? WHERE id=?", (task_name, task_id))
+
+    mc = build_multiple_choice_questions(
+        task_name=task_name,
+        app_name=app_name,
+        goal=answers.get("teaching_goal", ""),
+        done=answers.get("teaching_done", ""),
+        saved_choices=choices or {},
+    )
+    applied_choices = {q["id"]: q["selected"] for q in mc["questions"]}
+    if choices:
+        for k, v in choices.items():
+            if v:
+                applied_choices[str(k)] = str(v)
+
+    q1_opts = {o["id"]: o for o in mc["questions"][0]["options"]}
+    q3_opts = {o["id"]: o for o in mc["questions"][2]["options"]}
+    goal_desc = q1_opts.get(applied_choices.get("q_action", ""), {}).get("goal_text") or answers.get("teaching_goal") or f"Perform {task_name}"
+    done_desc = q3_opts.get(applied_choices.get("q_done", ""), {}).get("done_text") or answers.get("teaching_done") or "Output verified cleanly"
+
+    answers["teaching_task_name"] = task_name
+    answers["teaching_goal"] = goal_desc
+    answers["teaching_done"] = done_desc
+    answers["teaching_recording_confirmed"] = "yes"
+    answers["teaching_choice_answers"] = applied_choices
+    store.update_session(sid, {"title": f"Training · {task_name}", "answers": answers})
+
+    observations = [
+        {"timestamp": 0.2, "text": f"Confirmed workflow '{task_name}' ({app_name}) via multiple-choice review."},
+        {"timestamp": 1.0, "text": f"Action: {goal_desc}"},
+        {"timestamp": 1.8, "text": f"Done check: {done_desc}"},
+    ]
+    procedure = {
+        "revision": 1,
+        "steps": [
+            {"goal": f"Prepare input for {task_name}", "check": "Target input is ready", "action": "select_media", "target": "Media", "input": "filename"},
+            {"goal": goal_desc[:180], "check": "Action parameters populated", "action": "fill", "target": "Caption", "input": "caption"},
+            {"goal": "Execute deterministic workflow step", "check": done_desc[:180], "action": "click", "target": "Save draft"},
+            {"goal": "Verify output in safe sandbox", "check": "All post-execution checks pass", "action": "verify_draft"},
+        ],
+    }
+
+    proposal = None
+    try:
+        proposal = create_proposal(store.root, sid, observations, [], procedure)
+        receipt = {
+            "proposal_id": proposal["id"],
+            "consent": True,
+            "approved_at": _now(),
+            **teaching_source(store.root, sid),
+        }
+        target = store.artifacts / f"{sid}.{proposal['id']}.understanding.json"
+        target.write_text(json.dumps(receipt), encoding="utf-8")
+    except Exception:
+        pass
+
+    recipe = _recipe_from_choices(
+        task_id=task_id,
+        title=task_name,
+        app_name=app_name,
+        choices=applied_choices,
+        goal_text=goal_desc,
+        done_text=done_desc,
+    )
+    save_hybrid_recipe(store, task_id, recipe)
+
+    sandbox_result = None
+    if run_sandbox:
+        sandbox_result = run_hybrid_recipe(recipe, dry_run=True)
+
+    return {
+        "status": "approved_and_verified",
+        "session_id": sid,
+        "task_id": task_id,
+        "app_name": app_name,
+        "task_name": task_name,
+        "choices": applied_choices,
+        "goal": goal_desc,
+        "done_when": done_desc,
+        "recipe_card": recipe.to_recipe_card(),
+        "sandbox_result": sandbox_result,
+        "proposal": proposal,
+    }

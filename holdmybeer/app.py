@@ -119,6 +119,17 @@ class QuickRenameInput(StrictModel):
 class ExportSkillInput(StrictModel):
     output_dir: str | None = Field(default=None, max_length=1000)
 
+class AutoReviewInput(StrictModel):
+    window_title: str | None = Field(default=None, max_length=300)
+    duration_seconds: float | None = Field(default=None, ge=0.0, le=86400.0)
+
+
+class AnswerChoicesInput(StrictModel):
+    selected_name: str | None = Field(default=None, max_length=200)
+    choices: dict[str, str] = Field(default_factory=dict)
+    run_sandbox: bool = True
+
+
 
 
 
@@ -694,6 +705,40 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                 seen_names.add(fname)
                 tools.append(tool)
         return {"tools": tools, "count": len(tools)}
+
+
+    @app.post("/api/sessions/{session_id}/auto-review")
+    def post_session_auto_review(session_id: uuid.UUID, body: AutoReviewInput | None = None):
+        from .hybrid import generate_auto_review
+        payload = body or AutoReviewInput()
+        try:
+            return generate_auto_review(
+                app.state.store,
+                str(session_id),
+                window_title=payload.window_title,
+                duration_seconds=payload.duration_seconds,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/sessions/{session_id}/answer-choices")
+    def post_session_answer_choices(session_id: uuid.UUID, body: AnswerChoicesInput | None = None):
+        from .hybrid import apply_multiple_choice_answers
+        payload = body or AnswerChoicesInput()
+        try:
+            return apply_multiple_choice_answers(
+                app.state.store,
+                str(session_id),
+                selected_name=payload.selected_name,
+                choices=payload.choices,
+                run_sandbox=payload.run_sandbox,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @app.get("/api/universal-agents")
     @app.get("/api/agents/detect")

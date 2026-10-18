@@ -1509,18 +1509,18 @@ def _trigger_phrases(task_name: str, app_name: str, recipe: HybridRecipe) -> dic
                 example = "document.txt"
             else:
                 example = "sample"
-        say = f"Hey Ollie, run {clean_title} for {example} in {clean_app}"
+        say = f"Run {clean_title} for {example} in {clean_app}"
         phrases = [
             say,
-            f"Run {clean_title} for {example} in {clean_app}",
+            f"{clean_title} for {example} in {clean_app}",
             f"{clean_title} in {clean_app}",
         ]
     else:
-        say = f"Hey Ollie, run {clean_title} in {clean_app}"
+        say = f"Run {clean_title} in {clean_app}"
         phrases = [
             say,
-            f"Run {clean_title} in {clean_app}",
-            f"Perform {clean_title}",
+            f"Perform {clean_title} in {clean_app}",
+            f"{clean_title}",
         ]
     try_param = None
     if first is not None:

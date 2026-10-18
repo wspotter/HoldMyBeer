@@ -465,7 +465,7 @@ def cmd_list(args: argparse.Namespace) -> int:
     print("-" * 65)
     for idx, r in enumerate(recipes, 1):
         params_str = ", ".join(f"{p.name} ({p.type})" for p in r.parameters) or "none"
-        trigger = r.trigger_phrases[0] if r.trigger_phrases else f"Hey Ollie, run {r.title} in {r.app_name}"
+        trigger = r.trigger_phrases[0] if r.trigger_phrases else f"Run {r.title} in {r.app_name}"
         print(f"[{idx}] {r.title}")
         print(f"    Slug:       {r.slug()}")
         print(f"    App:        {r.app_name}")
@@ -616,7 +616,7 @@ def cmd_tui(args: argparse.Namespace) -> int:
     while True:
         print("\nAvailable Workflows:")
         for idx, r in enumerate(recipes, 1):
-            trigger = r.trigger_phrases[0] if r.trigger_phrases else f"Hey Ollie, run {r.title} in {r.app_name}"
+            trigger = r.trigger_phrases[0] if r.trigger_phrases else f"Run {r.title} in {r.app_name}"
             params_str = ", ".join(f"{p.name}" for p in r.parameters) or "none"
             print(f"  [{idx}] {r.title} (App: {r.app_name})")
             print(f"      Params: {params_str} | Voice: “{trigger}”")

@@ -1140,3 +1140,152 @@ h1:focus, h2:focus { outline: none; }
   gap: 12px;
   margin-top: 16px;
 }
+
+/* Persistent Mode Switcher */
+.hmb-mode-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  background: #ece9df;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 2px;
+  gap: 2px;
+  margin-left: auto;
+  margin-right: 12px;
+}
+.hmb-mode-btn {
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 11px;
+  border-radius: 16px;
+  cursor: pointer;
+  color: #635f52;
+  transition: all 0.15s ease;
+}
+.hmb-mode-btn:hover {
+  color: var(--ink);
+}
+.hmb-mode-btn.active {
+  background: #ffffff;
+  color: #2e3827;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+
+/* Simple Mode Finish Card */
+.hmb-simple-finish-card {
+  background: #fbfaf5;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin: 12px 0;
+}
+.hmb-finish-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.hmb-finish-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+.hmb-finish-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 16px;
+}
+.hmb-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 14px;
+  background: #f0eee6;
+  color: #555245;
+  border: 1px solid var(--line);
+}
+.hmb-status-pill.green {
+  background: #eef5e7;
+  color: #2b5719;
+  border-color: #8fae6d;
+}
+.hmb-run-big-btn {
+  width: 100%;
+  padding: 12px 20px !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  border-radius: 7px !important;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.hmb-cli-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #f4f2ea;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-top: 14px;
+  font-size: 11px;
+  color: #5c584c;
+}
+.hmb-cli-hint code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: #1e241b;
+  font-weight: 600;
+}
+.hmb-copy-mini-btn {
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  cursor: pointer;
+}
+
+/* Admin Sections */
+.hmb-admin-section {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 10px 0;
+}
+.hmb-admin-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #5c584c;
+  margin: 0 0 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hmb-agent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid #f0eee6;
+  font-size: 12px;
+}
+.hmb-agent-row:first-of-type {
+  border-top: none;
+}
+.hmb-agent-row code {
+  font-size: 11px;
+  background: #f4f3ec;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+

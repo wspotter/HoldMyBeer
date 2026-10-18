@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>HoldMyBeer · Start here</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/style.css?v=20261018b" />
+    <link rel="stylesheet" href="/style.css?v=20261018c" />
   </head>
   <body>
     <header class="app-header">
@@ -432,6 +432,10 @@ A fresh example, prepared for review.</textarea
       <div class="mc-modal-box">
         <div class="mc-modal-top">
           <span id="mcStepBadge" class="eyebrow">STEP 1 OF 3 · NAME IT</span>
+          <div class="hmb-mode-toggle-group" id="hmbModalModeGroup" role="group" aria-label="Interface Mode">
+            <button type="button" id="hmbModeEasyBtn" class="hmb-mode-btn active" title="Simple mode (clean, easy & zero jargon)">🐣 Simple</button>
+            <button type="button" id="hmbModeAdminBtn" class="hmb-mode-btn" title="Admin mode (full technical controls, connectors & sandbox options)">⚙️ Admin</button>
+          </div>
           <button type="button" id="mcModalClose" class="quiet mc-close-btn">✕ Close</button>
         </div>
         <div id="mcModalBody"></div>
@@ -441,7 +445,7 @@ A fresh example, prepared for review.</textarea
     <script src="/app.js?v=20261017f"></script>
     <script src="/simple.js?v=20261017f"></script>
     <script src="/training.js?v=20261017f"></script>
-    <script src="/directed.js?v=20261018b"></script>
+    <script src="/directed.js?v=20261018c"></script>
     <script src="/briefs.js?v=20261017f"></script>
   </body>
 </html>

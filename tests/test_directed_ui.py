@@ -1,7 +1,9 @@
 """Browser checks for the beginner recording and understanding-review path."""
+import os
 import re
 import sqlite3
 import subprocess
+from pathlib import Path
 
 import httpx
 import pytest
@@ -11,7 +13,7 @@ from test_backend import server
 
 
 def create_app_and_task(page, app_name="Shop", task_name="Save a request"):
-    page.get_by_role("button", name="Show me how", exact=True).click()
+    page.get_by_role("button", name="Choose app & task first", exact=True).click()
     expect(page.locator("#trainingAppStage")).to_be_visible()
     expect(page.locator("#trainingAppCreateForm")).to_be_visible()
     page.locator("#trainingAppName").fill(app_name)
@@ -52,10 +54,14 @@ def test_empty_home_requires_app_then_keeps_tasks_separate(server):
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         try:
-            page = browser.new_page()
+            page = browser.new_page(viewport={"width": 390, "height": 844})
             page.goto(base)
             expect(page.get_by_role("heading", name="Teach an assistant your repeat tasks.")).to_be_visible()
-            expect(page.get_by_role("button", name="Show me how", exact=True)).to_be_visible()
+            expect(page.get_by_role("button", name="Choose app & task first", exact=True)).to_be_visible()
+            expect(page.locator("#oneClickRecordBtn")).to_be_visible()
+            expect(page.locator("#oneClickImportLabel")).to_be_visible()
+            expect(page.locator("#quickRecordBegin")).to_be_hidden()
+            assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
             assert httpx.get(base + "/api/sessions").json()["sessions"] == []
 
             create_app_and_task(page, "Orders", "Save an order")
@@ -64,7 +70,7 @@ def test_empty_home_requires_app_then_keeps_tasks_separate(server):
             # so each task has exactly one session and no duplicate is made on reload/reopen.
             app_id = httpx.get(base + "/api/training/apps").json()["apps"][0]["id"]
             page.locator("#directedView [data-view=home]").click()
-            page.get_by_role("button", name="Show me how", exact=True).click()
+            page.get_by_role("button", name="Choose app & task first", exact=True).click()
             expect(page.locator("#trainingAppStage")).to_be_visible()
             page.locator("#trainingAppSelect").select_option(app_id)
             page.locator("#trainingAppContinue").click()
@@ -346,5 +352,126 @@ def test_correction_marks_interpretation_stale_pending_revision_and_retains_note
             page.locator("#directedReviewPanel").get_by_role("button", name="Refresh review").click()
             expect(page.locator("#directedReviewPanel")).to_contain_text("Here’s what I understood")
             expect(page.locator("#directedReviewPanel").get_by_role("button", name="Approve this understanding")).to_be_visible()
+        finally:
+            browser.close()
+
+
+def test_easy_recording_saves_directly_to_library_without_execution(server, one_second_video):
+    base, data_dir = server
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page(viewport={"width": 390, "height": 844})
+            evidence_dir = os.environ.get("HMB_BROWSER_EVIDENCE")
+            if evidence_dir:
+                evidence_dir = Path(evidence_dir)
+                evidence_dir.mkdir(parents=True, exist_ok=True)
+            errors, posted = [], []
+            page.on("pageerror", lambda err: errors.append(str(err)))
+            page.on("request", lambda req: posted.append(req.url) if req.method == "POST" else None)
+            page.goto(base)
+            if evidence_dir:
+                page.screenshot(path=str(evidence_dir / "easy-home-390.png"), full_page=True)
+            page.locator("#oneClickImportInput").set_input_files(str(one_second_video))
+            expect(page.locator("#hmbAppInput")).to_be_visible()
+            page.locator("#hmbAppInput").fill("Orders")
+            page.locator("#hmbTaskInput").fill("Save a customer order")
+            expect(page.locator("#hmbNameNext")).to_have_text("Save recording")
+            if evidence_dir:
+                page.screenshot(path=str(evidence_dir / "easy-naming-modal-390.png"), full_page=True)
+            with page.expect_response(lambda r: "/answer-choices" in r.url) as response:
+                page.locator("#hmbNameNext").click()
+            assert response.value.request.post_data_json["run_sandbox"] is False
+            assert response.value.json()["status"] == "saved_for_review"
+            expect(page.locator("#mcModalOverlay")).to_be_hidden()
+            expect(page.locator("#savedView")).to_be_visible()
+            expect(page.locator("#toast")).to_have_text("Your recording is saved.")
+            expect(page.locator("#savedList")).not_to_contain_text("Quick Workflows")
+            expect(page.locator("#savedList")).not_to_contain_text("No tasks saved for this app.")
+            saved = page.locator("#savedList button").filter(has_text="Save a customer order")
+            expect(saved).to_contain_text("needs review or testing")
+            expect(page.locator("#savedStatus")).to_contain_text("Choose a task")
+            if evidence_dir:
+                page.screenshot(path=str(evidence_dir / "easy-saved-tasks-390.png"), full_page=True)
+            assert not any("/hybrid-run" in url for url in posted)
+            assert not list((data_dir / "artifacts").glob("*.understanding.json"))
+            assert page.locator("#hmbRunNowBtn").count() == 0
+            assert page.locator("#hmbCliCopyBtn").count() == 0
+            assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+            saved.click()
+            expect(page.locator("#trainingDescriptionText")).to_contain_text("Save a customer order")
+            expect(page.locator("#trainingEdit")).to_be_visible()
+            assert not errors
+        finally:
+            browser.close()
+
+
+def test_admin_mode_persists_and_sample_check_does_not_claim_app_execution(server, one_second_video):
+    base, _ = server
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            errors = []
+            page.on("pageerror", lambda err: errors.append(str(err)))
+            page.add_init_script("window.__hmbXss = false;")
+
+            def inject_admin_metadata(route):
+                response = route.fetch()
+                payload = response.json()
+                payload.update({
+                    "window_title": '<img src=x onerror="window.__hmbXss=true">',
+                    "display": '<svg onload="window.__hmbXss=true">',
+                    "duration_seconds": '<img src=x onerror="window.__hmbXss=true">',
+                })
+                route.fulfill(response=response, json=payload)
+
+            page.route("**/api/sessions/*/auto-review", inject_admin_metadata)
+            page.goto(base)
+            page.locator("#oneClickImportInput").set_input_files(str(one_second_video))
+            page.locator("#hmbModeAdminBtn").click()
+            page.reload()
+            page.locator("#oneClickImportInput").set_input_files(str(one_second_video))
+            expect(page.locator("#hmbModeAdminBtn")).to_have_class(re.compile("active"))
+            page.locator("#hmbAppInput").fill("Unknown app")
+            page.locator("#hmbTaskInput").fill("Take a screenshot")
+            admin_metadata = page.locator(".hmb-admin-section")
+            expect(admin_metadata).to_contain_text('<img src=x onerror="window.__hmbXss=true">')
+            expect(admin_metadata).to_contain_text('<svg onload="window.__hmbXss=true">')
+            expect(admin_metadata.locator("img, svg")).to_have_count(0)
+            assert page.evaluate("window.__hmbXss") is False
+            page.locator("#hmbNameNext").click()
+            page.locator("#oneClickApproveBtn").click()
+            expect(page.locator("#hmbTryBtn")).to_be_visible()
+            page.locator("#hmbTryBtn").click()
+            expect(page.locator("#hmbTryResult")).to_contain_text("Needs Attention")
+            expect(page.locator("#hmbTryResult")).to_contain_text("needs a real browser or desktop executor")
+            expect(page.locator("#hmbTryResult")).not_to_contain_text("[object Object]")
+            expect(page.locator("#hmbTryResult")).not_to_contain_text("passed")
+            expect(page.locator("#hmbTryResult")).not_to_contain_text("Safe for live use")
+            page.locator("#hmbModeEasyBtn").click()
+            expect(page.locator("#savedView")).to_be_visible()
+            expect(page.locator("#mcModalOverlay")).to_be_hidden()
+            assert page.evaluate("localStorage.getItem('hmb_user_mode')") == "easy"
+            assert not errors
+        finally:
+            browser.close()
+
+
+def test_cancelled_capture_does_not_open_review_or_invent_a_recording(server):
+    base, _ = server
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.route("**/api/native-record/start", lambda route: route.fulfill(json={"supported": False}))
+            page.add_init_script("""navigator.mediaDevices.getDisplayMedia = async () => {
+                throw new DOMException('User cancelled', 'NotAllowedError');
+            };""")
+            page.goto(base)
+            page.locator("#oneClickRecordBtn").click()
+            expect(page.locator("#oneClickStatus")).to_contain_text("Recording wasn’t started")
+            expect(page.locator("#mcModalOverlay")).to_be_hidden()
+            assert httpx.get(base + "/api/sessions").json()["sessions"] == []
         finally:
             browser.close()

@@ -73,9 +73,11 @@ def test_browser_instant_record_button_opens_record_stage_with_recipe_card_and_s
         try:
             page = browser.new_page()
             page.goto(base)
-            # Both the classic "Show me how" button and the 1-click "🍺 Hold My Beer (Instant Record)" button exist
-            expect(page.get_by_role("button", name="Show me how", exact=True)).to_be_visible()
+            # Instant Record lives in Advanced so first-use users see one clear recording path.
+            expect(page.get_by_role("button", name="Choose app & task first", exact=True)).to_be_visible()
             instant_btn = page.locator("#quickRecordBegin")
+            expect(instant_btn).to_be_hidden()
+            page.get_by_role("button", name="Advanced", exact=True).click()
             expect(instant_btn).to_be_visible()
             expect(instant_btn).to_contain_text("Hold My Beer (Instant Record)")
 

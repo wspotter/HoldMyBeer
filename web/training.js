@@ -272,18 +272,17 @@
     try {
       const data = await trainingApi("/api/training/apps"); apps = data.apps || [];
       let taskCount = 0;
-      for (const app of apps) {
+      for (const app of apps.filter(app => app.tasks?.length)) {
         add("h2", app.name, list);
-        if (!app.tasks.length) add("p", "No tasks saved for this app.", list, "task-status");
         for (const task of app.tasks) {
           taskCount += 1;
-          const button = add("button", `${task.name} · training version ${task.latest_version || "—"}${task.working_version ? ` · practice-tested ${task.working_version}` : " · no tested version"}`, list, "saved-task");
+          const button = add("button", `${task.name} · training version ${task.latest_version || "—"}${task.working_version ? ` · practice app tested ${task.working_version}` : " · needs review or testing"}`, list, "saved-task");
           button.type = "button";
           button.onclick = () => { window.hmbShowView("directed"); document.dispatchEvent(new CustomEvent("hmb-resume-training-task", {detail:task.id})); };
         }
       }
       const legacyCount = await window.hmbAppendLegacySaved(list);
-      setStatus("savedStatus", taskCount + legacyCount ? "Choose a task, result, or older workflow to continue." : "No saved tasks yet. I’ll show you one task to get started.");
+      setStatus("savedStatus", taskCount + legacyCount ? "Choose a task to view its recording or make changes." : "No saved tasks yet. Start a recording to save your first task.");
     } catch (error) { setStatus("savedStatus", `Could not load saved tasks. ${error.message}`); }
   };
   document.addEventListener("hmb-resume-training-task", async event => {

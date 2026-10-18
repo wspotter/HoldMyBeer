@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from playwright.sync_api import expect, sync_playwright
 
-from holdmybeer.app import create_app
+from likethis.app import create_app
 from test_backend import server
 
 
@@ -79,7 +79,7 @@ def test_browser_instant_record_button_opens_record_stage_with_recipe_card_and_s
             expect(instant_btn).to_be_hidden()
             page.get_by_role("button", name="Advanced", exact=True).click()
             expect(instant_btn).to_be_visible()
-            expect(instant_btn).to_contain_text("Hold My Beer (Instant Record)")
+            expect(instant_btn).to_contain_text("LikeThis (Instant Record)")
 
             # Clicking Instant Record skips the 3-step App -> Task -> Details wizard and lands directly on #directedRecordStage
             instant_btn.click()
@@ -110,7 +110,7 @@ def test_browser_instant_record_button_opens_record_stage_with_recipe_card_and_s
 
 def test_zero_typing_auto_review_and_multiple_choice_answers(tmp_path):
     from fastapi.testclient import TestClient
-    from holdmybeer.app import create_app
+    from likethis.app import create_app
 
     app = create_app(data_dir=tmp_path)
     client = TestClient(app)

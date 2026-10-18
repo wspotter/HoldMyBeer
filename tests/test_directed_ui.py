@@ -95,7 +95,7 @@ def test_empty_home_requires_app_then_keeps_tasks_separate(server):
 
 
 def test_imported_recording_waiting_review_saved_restore_and_approval_never_runs(server, one_second_video):
-    from holdmybeer.proposals import create_proposal
+    from likethis.proposals import create_proposal
 
     base, data_dir = server
     with sync_playwright() as p:
@@ -283,7 +283,7 @@ def test_imported_recording_waiting_review_saved_restore_and_approval_never_runs
 def test_correction_marks_interpretation_stale_pending_revision_and_retains_note(server, one_second_video):
     """Slice 5: a saved correction makes the agent's interpretation out of date
     (pending the assistant's revision), removes Approve, and is retained."""
-    from holdmybeer.proposals import create_proposal
+    from likethis.proposals import create_proposal
 
     base, data_dir = server
     with sync_playwright() as p:

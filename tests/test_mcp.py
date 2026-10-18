@@ -7,8 +7,8 @@ import uuid
 
 import pytest
 
-from holdmybeer.frames import MEDIA_TIMEOUT, FrameError, _scan_packet_duration, extract_frames
-from holdmybeer.mcp_server import hmb_get_session, hmb_list_sessions, hmb_recording_frames
+from likethis.frames import MEDIA_TIMEOUT, FrameError, _scan_packet_duration, extract_frames
+from likethis.mcp_server import hmb_get_session, hmb_list_sessions, hmb_recording_frames
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def recording_store(tmp_path, monkeypatch):
     db.execute("INSERT INTO sessions VALUES (?,?)", (sid, json.dumps({"id": sid, "title": "local test", "created_at": "today", "notes": "untrusted", "media_url": "/media", "procedure": {"revision": 1, "steps": []}})))
     db.commit()
     db.close()
-    from holdmybeer.app import Store
+    from likethis.app import Store
     Store(root)
     video = artifacts / f"{sid}.mp4"
     subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=1600x900:d=1", "-an", "-c:v", "mpeg4", "-y", str(video)], check=True, timeout=15, shell=False)
@@ -45,7 +45,7 @@ def test_session_tools_read_from_local_store(recording_store):
 def test_session_tools_identify_same_named_tasks_by_app_and_version(recording_store):
     root, legacy_sid, _ = recording_store
     from fastapi.testclient import TestClient
-    from holdmybeer.app import create_app
+    from likethis.app import create_app
 
     client = TestClient(create_app(root))
     app_a = client.post("/api/training/apps", json={"name": "Alpha"}).json()
@@ -163,7 +163,7 @@ def test_stdio_mcp_lists_tools_and_returns_image_content(recording_store):
     async def exercise():
         params = StdioServerParameters(
             command=sys.executable,
-            args=["-m", "holdmybeer.mcp_server"],
+            args=["-m", "likethis.mcp_server"],
             env={**os.environ, "HMB_DATA_DIR": str(root)},
         )
         async with stdio_client(params) as (read_stream, write_stream):

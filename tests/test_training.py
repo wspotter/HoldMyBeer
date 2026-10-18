@@ -2,10 +2,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from holdmybeer.app import create_app
-from holdmybeer.app import Store
-from holdmybeer.training import is_mutable_training_session
-from holdmybeer.proposals import create_proposal
+from likethis.app import create_app
+from likethis.app import Store
+from likethis.training import is_mutable_training_session
+from likethis.proposals import create_proposal
 
 
 @pytest.fixture
@@ -100,7 +100,7 @@ def test_quick_record_name_collision_appends_versions_and_preserves_recordings(c
     task_id = renamed.json()["task_id"]
     assert task_id == first["task_id"]
     assert client.get(f"/api/training/tasks/{task_id}").json()["latest_version"] == 1
-    from holdmybeer.hybrid import HybridRecipe, HybridStep, list_hybrid_recipes, save_hybrid_recipe
+    from likethis.hybrid import HybridRecipe, HybridStep, list_hybrid_recipes, save_hybrid_recipe
     target_recipe = HybridRecipe(
         task_id=task_id, title="Save monthly report v2", app_name="Editor",
         steps=[HybridStep(id="keep", action="file_organize_by_ext", goal="Keep existing target recipe")],
@@ -398,7 +398,7 @@ def test_pending_interpretation_binding_and_correction_states(client):
 
 def test_legacy_session_is_preserved_and_never_treated_as_intent(tmp_path):
     import json as _json
-    from holdmybeer.app import Store
+    from likethis.app import Store
     root = tmp_path / "data"
     (root / "artifacts").mkdir(parents=True)
     # A pre-existing legacy session: old goal/done notes, no recording-confirmation key.

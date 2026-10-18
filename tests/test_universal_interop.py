@@ -13,16 +13,16 @@ from fastapi.testclient import TestClient
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
-import holdmybeer.cli as cli
-from holdmybeer.app import create_app
-from holdmybeer.hybrid import (
+import likethis.cli as cli
+from likethis.app import create_app
+from likethis.hybrid import (
     HybridAssertion,
     HybridParameter,
     HybridRecipe,
     HybridStep,
     save_hybrid_recipe,
 )
-from holdmybeer.mcp_server import hmb_list_universal_workflows
+from likethis.mcp_server import hmb_list_universal_workflows
 
 
 @pytest.fixture
@@ -72,7 +72,7 @@ def test_dynamic_mcp_exposes_universal_workflows_and_executes_dry_run(tmp_path, 
     async def exercise():
         params = StdioServerParameters(
             command=sys.executable,
-            args=["-m", "holdmybeer.mcp_server"],
+            args=["-m", "likethis.mcp_server"],
             env={**os.environ, "HMB_DATA_DIR": str(data_dir)},
         )
         async with stdio_client(params) as (read_stream, write_stream):

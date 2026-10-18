@@ -8,8 +8,8 @@ import httpx
 import pytest
 import uvicorn
 
-import holdmybeer.app as backend
-from holdmybeer.app import create_app
+import likethis.app as backend
+from likethis.app import create_app
 
 
 @pytest.fixture
@@ -230,7 +230,7 @@ def test_guided_demo_preserves_dirty_workflow_and_requires_explicit_review(serve
                     "Bundled browser unavailable or could not start: Traceback (most recent call last): /private/path"}),
             ))
             page.locator("#run").click()
-            expect(page.locator("#guidedStatus")).to_contain_text("holdmybeer doctor")
+            expect(page.locator("#guidedStatus")).to_contain_text("likethis doctor")
             expect(page.locator("#guidedStatus")).not_to_contain_text("Traceback")
 
             page.unroute("**/api/sessions/*/run")
@@ -390,7 +390,7 @@ def test_procedure_rejects_incomplete_malformed_and_reordered_actions(server):
 
 
 def test_proposal_inbox_does_not_apply_agent_actions(server):
-    from holdmybeer.proposals import create_proposal
+    from likethis.proposals import create_proposal
     base, data_dir = server
     session = httpx.post(base + '/api/sessions', json={'title': 'Review inbox'}).json()
     steps = [

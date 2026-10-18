@@ -1,4 +1,4 @@
-"""Enable ``python -m holdmybeer`` to invoke the command line."""
+"""Enable ``python -m likethis`` to invoke the command line."""
 from __future__ import annotations
 
 from .cli import main

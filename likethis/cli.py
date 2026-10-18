@@ -184,7 +184,7 @@ def doctor_report_is_ok(report: dict) -> bool:
 
 def format_doctor_report(report: dict) -> str:
     lines: list[str] = []
-    lines.append("HoldMyBeer doctor")
+    lines.append("LikeThis doctor")
     lines.append(f"  version:        {report['version']}")
     lines.append(f"  python:         {report['python']} ({report['interpreter']})")
     lines.append("  required modules:")
@@ -565,7 +565,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         return EXIT_OK if res.get("status") in {"verified", "success"} else EXIT_ERROR
 
     mode_label = "Safe Sandbox Simulation (Dry Run)" if dry_run else "LIVE REPLAY"
-    print(f"🍺 HoldMyBeer Execution Receipt")
+    print(f"👉 LikeThis Execution Receipt")
     print("=" * 65)
     print(f"  Workflow:   {chosen_recipe.title} (slug: {chosen_recipe.slug()})")
     print(f"  App:        {chosen_recipe.app_name}")
@@ -698,25 +698,25 @@ def cmd_tui(args: argparse.Namespace) -> int:
                 print("Goodbye! 🍺")
                 return EXIT_OK
         except (EOFError, KeyboardInterrupt):
-            print("\nExiting HoldMyBeer TUI.")
+            print("\nExiting LikeThis TUI.")
             return EXIT_OK
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="holdmybeer",
-        description="Launch the local HoldMyBeer preview, check dependencies, configure an explicit Hermes home, list or run workflows, or launch the interactive TUI.",
+        prog="likethis",
+        description="Launch the local LikeThis preview, check dependencies, configure an explicit Hermes home, list or run workflows, or launch the interactive TUI.",
         epilog=(
             "The preview binds loopback only by default. Use --host to change the "
             "interface, --port to change the port, and --data-dir to store data "
-            "elsewhere (or set HMB_DATA_DIR)."
+            "elsewhere (or set LIKETHIS_DATA_DIR / HMB_DATA_DIR)."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--version",
         action="version",
-        version=f"holdmybeer {__version__}",
+        version=f"likethis {__version__}",
     )
     parser.add_argument(
         "command",

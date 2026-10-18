@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from fastapi.testclient import TestClient
 
-from holdmybeer.app import create_app
+from likethis.app import create_app
 
 
 def test_revision_conflicts_are_atomic_and_history_survives_restart(tmp_path):

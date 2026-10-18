@@ -41,7 +41,7 @@
     const box = $("demoResult");
     box.replaceChildren();
     box.append(textEl("p", "3. YOUR RESULT", "eyebrow"), textEl("h2", "Draft saved."),
-      textEl("p", "HoldMyBeer did the clicks and checked the saved draft. Nothing was posted."));
+      textEl("p", "LikeThis did the clicks and checked the saved draft. Nothing was posted."));
     const fields = document.createElement("dl");
     fields.className = "receipt-fields";
     for (const [label, value] of [["File", run.filename], ["Caption", run.caption]]) {

@@ -14,9 +14,9 @@ jobs:
       - run: python3 -m playwright install --with-deps chromium
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: python3 -m pytest -q
-      - run: python3 -m compileall -q holdmybeer __init__.py
+      - run: python3 -m compileall -q likethis __init__.py
       - run: node --check web/app.js
-      - run: python3 -m pip wheel . --no-deps --wheel-dir "$RUNNER_TEMP/hmb-wheels"
-      - run: python3 -m venv "$RUNNER_TEMP/hmb-wheel-env"
-      - run: '"$RUNNER_TEMP/hmb-wheel-env/bin/pip" install "$RUNNER_TEMP"/hmb-wheels/holdmybeer-*.whl httpx'
-      - run: '"$RUNNER_TEMP/hmb-wheel-env/bin/python" tests/wheel_smoke.py'
+      - run: python3 -m pip wheel . --no-deps --wheel-dir "$RUNNER_TEMP/likethis-wheels"
+      - run: python3 -m venv "$RUNNER_TEMP/likethis-wheel-env"
+      - run: '"$RUNNER_TEMP/likethis-wheel-env/bin/pip" install "$RUNNER_TEMP"/likethis-wheels/likethis-*.whl httpx'
+      - run: '"$RUNNER_TEMP/likethis-wheel-env/bin/python" tests/wheel_smoke.py'

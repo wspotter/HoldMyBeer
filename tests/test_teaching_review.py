@@ -5,8 +5,8 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from holdmybeer.app import create_app
-from holdmybeer.proposals import create_proposal
+from likethis.app import create_app
+from likethis.proposals import create_proposal
 
 
 @pytest.fixture

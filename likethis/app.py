@@ -19,8 +19,22 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
 from . import __version__ as VERSION
+
 MAX_MEDIA_BYTES = 100 * 1024 * 1024
-DATA_DIR = Path(os.environ.get("HMB_DATA_DIR", "~/.local/share/holdmybeer")).expanduser().resolve()
+
+
+def _resolve_data_dir() -> Path:
+    raw = os.environ.get("LIKETHIS_DATA_DIR") or os.environ.get("HMB_DATA_DIR")
+    if raw:
+        return Path(raw).expanduser().resolve()
+    legacy = Path("~/.local/share/holdmybeer").expanduser().resolve()
+    if legacy.exists():
+        return legacy
+    return Path("~/.local/share/likethis").expanduser().resolve()
+
+
+DATA_DIR = _resolve_data_dir()
+get_data_dir = _resolve_data_dir
 _ASSET_DIR = Path(__file__).resolve().parent / "web"
 if not _ASSET_DIR.is_dir():
     _ASSET_DIR = Path(__file__).resolve().parent.parent / "web"
@@ -255,7 +269,7 @@ class Store:
 
 
 def create_app(data_dir: Path | None = None) -> FastAPI:
-    app = FastAPI(title="HoldMyBeer", docs_url=None, redoc_url=None)
+    app = FastAPI(title="LikeThis", docs_url=None, redoc_url=None)
     app.state.store = Store((data_dir or DATA_DIR).resolve())
     app.state.runner_lock = threading.Lock()
     from .brief_jobs import BriefJobs, brief_router

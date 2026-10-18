@@ -6,9 +6,9 @@ import sys
 
 import pytest
 
-import holdmybeer.cli as cli
-import holdmybeer.app as backend
-from holdmybeer import __version__
+import likethis.cli as cli
+import likethis.app as backend
+from likethis import __version__
 
 
 # --------------------------------------------------------------------------- #
@@ -19,7 +19,7 @@ def test_help_lists_launch_and_doctor_options(capsys):
         cli.main(["--help"])
     assert exc.value.code == 0
     out = capsys.readouterr().out
-    assert "Launch the local HoldMyBeer preview" in out
+    assert "Launch the local LikeThis preview" in out
     assert "doctor" in out
     assert "--port" in out
     assert "--data-dir" in out
@@ -280,10 +280,11 @@ def test_launch_free_port_starts_server(tmp_path):
     chosen = tmp_path / "chosen"
     env = dict(os.environ, HOME=str(tmp_path), PYTHONUNBUFFERED="1")
     env.pop("HMB_DATA_DIR", None)
+    env.pop("LIKETHIS_DATA_DIR", None)
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
     log = tmp_path / "launch.log"
     with log.open("w") as output:
-        process = subprocess.Popen([sys.executable, "-m", "holdmybeer", "--port", "0", "--data-dir", str(chosen)], env=env, cwd=tmp_path, stdout=output, stderr=subprocess.STDOUT)
+        process = subprocess.Popen([sys.executable, "-m", "likethis", "--port", "0", "--data-dir", str(chosen)], env=env, cwd=tmp_path, stdout=output, stderr=subprocess.STDOUT)
         try:
             for _ in range(150):
                 match = re.search(r"http://127\.0\.0\.1:(\d+)", log.read_text())
@@ -300,6 +301,7 @@ def test_launch_free_port_starts_server(tmp_path):
                 pytest.fail(log.read_text())
             assert int(match.group(1)) > 0
             assert chosen.is_dir()
+            assert not (tmp_path / ".local/share/likethis").exists()
             assert not (tmp_path / ".local/share/holdmybeer").exists()
         finally:
             process.terminate()
@@ -316,10 +318,12 @@ def test_doctor_subprocess_does_not_create_default_store(tmp_path):
     import subprocess
     env = dict(os.environ, HOME=str(tmp_path))
     env.pop("HMB_DATA_DIR", None)
+    env.pop("LIKETHIS_DATA_DIR", None)
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
-    result = subprocess.run([sys.executable, "-m", "holdmybeer", "doctor"], env=env, cwd=tmp_path, capture_output=True, text=True, timeout=15)
+    result = subprocess.run([sys.executable, "-m", "likethis", "doctor"], env=env, cwd=tmp_path, capture_output=True, text=True, timeout=15)
     assert result.returncode in (0, 2)
-    assert "HoldMyBeer doctor" in result.stdout
+    assert "LikeThis doctor" in result.stdout
+    assert not (tmp_path / ".local/share/likethis").exists()
     assert not (tmp_path / ".local/share/holdmybeer").exists()
 
 
@@ -398,8 +402,8 @@ def test_cli_list_empty(tmp_path, capsys):
 
 
 def test_cli_list_and_run_with_recipes(tmp_path, capsys):
-    from holdmybeer.app import Store
-    from holdmybeer.hybrid import HybridAssertion, HybridRecipe, HybridStep, save_hybrid_recipe
+    from likethis.app import Store
+    from likethis.hybrid import HybridAssertion, HybridRecipe, HybridStep, save_hybrid_recipe
     data_dir = tmp_path / "data"
     store = Store(data_dir)
     target_dir = tmp_path / "target"
@@ -440,7 +444,7 @@ def test_cli_list_and_run_with_recipes(tmp_path, capsys):
     code_run = cli.main(["run", "summarize_sales_and_organize_files", "--data-dir", str(data_dir), "--target-dir", str(target_dir)])
     assert code_run == cli.EXIT_OK
     out_run = capsys.readouterr().out
-    assert "HoldMyBeer Execution Receipt" in out_run
+    assert "LikeThis Execution Receipt" in out_run
     assert "Safe Sandbox Simulation" in out_run
     assert "STATUS: VERIFIED" in out_run
     assert "3 simulated changes" in out_run
@@ -486,8 +490,8 @@ def test_cli_tui_exits_cleanly_on_empty(tmp_path, capsys):
 
 
 def test_cli_tui_interactive_flow(tmp_path, monkeypatch, capsys):
-    from holdmybeer.app import Store
-    from holdmybeer.hybrid import HybridParameter, HybridRecipe, HybridStep, save_hybrid_recipe
+    from likethis.app import Store
+    from likethis.hybrid import HybridParameter, HybridRecipe, HybridStep, save_hybrid_recipe
     import io
 
     data_dir = tmp_path / "data"

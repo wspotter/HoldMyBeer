@@ -7,15 +7,15 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from holdmybeer.app import create_app
-from holdmybeer.hybrid import (
+from likethis.app import create_app
+from likethis.hybrid import (
     HybridAssertion,
     HybridParameter,
     HybridRecipe,
     HybridStep,
     run_hybrid_recipe,
 )
-from holdmybeer import runner
+from likethis import runner
 
 
 @pytest.fixture

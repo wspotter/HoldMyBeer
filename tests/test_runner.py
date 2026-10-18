@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
-from holdmybeer.runner import execute
+from likethis.runner import execute
 
 
 @pytest.mark.parametrize("stage, goal", [

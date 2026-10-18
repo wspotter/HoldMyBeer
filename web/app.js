@@ -55,13 +55,13 @@ function guidedMessage(message) {
 function safeTrialFailure(message) {
   const value = String(message || "");
   if (/bundled browser unavailable|playwright|chromium|browser could not start|executable doesn't exist/i.test(value)) {
-    return "The practice browser is unavailable. Run `holdmybeer doctor`; if Chromium is missing, install it in the same Python environment with `python -m playwright install chromium`, then retry.";
+    return "The practice browser is unavailable. Run `likethis doctor`; if Chromium is missing, install it in the same Python environment with `python -m playwright install chromium`, then retry.";
   }
   if (/failed to fetch|networkerror|load failed|connection refused|could not reach/i.test(value)) {
-    return "Could not reach the local workspace. Check that HoldMyBeer is still running on its loopback preview, then refresh and retry.";
+    return "Could not reach the local workspace. Check that LikeThis is still running on its loopback preview, then refresh and retry.";
   }
   if (/traceback|exception|no module named|\.py:\d+/i.test(value)) {
-    return "The local trial hit a runtime error. Run `holdmybeer doctor`, check the local server log for details, repair the reported issue, then retry.";
+    return "The local trial hit a runtime error. Run `likethis doctor`, check the local server log for details, repair the reported issue, then retry.";
   }
   return value.slice(0, 300) || "The trial did not verify. Review the checkpoint evidence, repair the local setup, then authorize and retry.";
 }

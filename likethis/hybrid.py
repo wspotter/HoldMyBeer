@@ -1061,7 +1061,10 @@ def main() -> int:
             params[k.strip()] = v.strip()
 
     try:
-        from holdmybeer.hybrid import run_hybrid_recipe
+        try:
+            from likethis.hybrid import run_hybrid_recipe
+        except ImportError:
+            from holdmybeer.hybrid import run_hybrid_recipe
         result = run_hybrid_recipe(
             recipe,
             parameters=params,

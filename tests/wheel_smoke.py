@@ -18,12 +18,12 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 def main():
     with tempfile.TemporaryDirectory(prefix="hmb-wheel-") as work:
         os.environ["HMB_DATA_DIR"] = str(Path(work) / "data")
-        import holdmybeer
-        package_file = Path(holdmybeer.__file__).resolve()
+        import likethis
+        package_file = Path(likethis.__file__).resolve()
         source_root = Path(__file__).resolve().parents[1]
         if source_root == package_file.parent or source_root in package_file.parents:
-            raise RuntimeError(f"wheel smoke imported HoldMyBeer from source tree: {package_file}")
-        from holdmybeer.app import create_app
+            raise RuntimeError(f"wheel smoke imported LikeThis from source tree: {package_file}")
+        from likethis.app import create_app
         app = create_app(Path(os.environ["HMB_DATA_DIR"]))
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
@@ -101,7 +101,7 @@ def main():
             assert httpx.get(base + run["screenshot_url"]).headers["content-type"] == "image/png"
 
             async def protocol():
-                params = StdioServerParameters(command=sys.executable, args=["-m", "holdmybeer.mcp_server"], env=dict(os.environ))
+                params = StdioServerParameters(command=sys.executable, args=["-m", "likethis.mcp_server"], env=dict(os.environ))
                 async with stdio_client(params) as (read, write):
                     async with ClientSession(read, write) as client:
                         await client.initialize()

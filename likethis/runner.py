@@ -1,9 +1,23 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import time
 from pathlib import Path
+
+
+def get_data_dir() -> Path:
+    raw = os.environ.get("LIKETHIS_DATA_DIR") or os.environ.get("HMB_DATA_DIR")
+    if raw:
+        return Path(raw).expanduser().resolve()
+    legacy = Path("~/.local/share/holdmybeer").expanduser().resolve()
+    if legacy.exists():
+        return legacy
+    return Path("~/.local/share/likethis").expanduser().resolve()
+
+
+DATA_DIR = get_data_dir()
 
 
 def execute(base_url: str, artifacts: Path, run_id: str, caption: str, filename: str,

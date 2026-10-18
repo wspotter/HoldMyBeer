@@ -4,7 +4,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from holdmybeer import issue_brief
+from likethis import issue_brief
 
 
 def test_issue_brief_rejects_unsafe_inputs_before_launch(tmp_path, monkeypatch):

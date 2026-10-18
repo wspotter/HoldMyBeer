@@ -4,7 +4,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from holdmybeer.app import create_app
+from likethis.app import create_app
 
 
 @pytest.fixture
@@ -50,7 +50,7 @@ def test_changed_session_revision_invalidates_approval(client):
 
 
 def test_job_retries_cancel_and_history_survive_reload(client, monkeypatch):
-    from holdmybeer import issue_brief
+    from likethis import issue_brief
     entered = threading.Event()
     calls = []
     def runner(repo, keyword, limit, artifacts, run_id, event):

@@ -255,7 +255,7 @@
 
     if (status === "waiting") {
       const taskName = trainingTask?.name || current?.answers?.teaching_task_name || "this task";
-      add("p", `Your recording is saved. Assistant review is not connected automatically. Ask your connected assistant to review “${taskName}” in HoldMyBeer, then choose Refresh review here.`, panel, "task-status");
+      add("p", `Your recording is saved. Assistant review is not connected automatically. Ask your connected assistant to review “${taskName}” in LikeThis, then choose Refresh review here.`, panel, "task-status");
       const autoBtn = add("button", "✨ Auto-Review Now (Multiple-Choice — Zero Typing)", panel, "mc-approve-btn");
       autoBtn.type = "button";
       autoBtn.onclick = async () => {
@@ -971,7 +971,7 @@
           <div class="hmb-admin-section-title">🤖 Agent connection options</div>
           <div class="hmb-agent-row">
             <div><strong>Claude Code / Desktop</strong><br><small style="color:#666;">MCP dynamic tool</small></div>
-            <code>claude mcp add holdmybeer uvx holdmybeer mcp</code>
+            <code>claude mcp add likethis uvx likethis mcp</code>
           </div>
           <div class="hmb-agent-row">
             <div><strong>Hermes / Ollie</strong><br><small style="color:#666;">Autonomous worker tool</small></div>
@@ -1156,7 +1156,7 @@
 
       try {
         if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder) {
-          ocStatus("Screen recording is unavailable here. Open HoldMyBeer on localhost or import a video file.");
+          ocStatus("Screen recording is unavailable here. Open LikeThis on localhost or import a video file.");
           return;
         }
         ocStream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: false});

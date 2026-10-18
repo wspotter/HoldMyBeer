@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from holdmybeer.proposals import create_proposal, latest_proposal
+from likethis.proposals import create_proposal, latest_proposal
 
 
 @pytest.fixture

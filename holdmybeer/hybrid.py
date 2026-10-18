@@ -83,6 +83,7 @@ class HybridRecipe(StrictModel):
     steps: list[HybridStep] = Field(default_factory=list, max_length=30)
     assertions: list[HybridAssertion] = Field(default_factory=list, max_length=30)
     on_uncertainty: Literal["pause_for_agent"] = "pause_for_agent"
+    trigger_phrases: list[str] = Field(default_factory=list, max_length=10)
 
     def slug(self) -> str:
         return _slugify(self.title)
@@ -162,6 +163,12 @@ class HybridRecipe(StrictModel):
                 "description": (
                     f"{self.title} ({self.app_name}). Deterministic hybrid recipe executed by HoldMyBeer. "
                     "Defaults to safe sandbox dry_run=true."
+                    + (
+                        " Use when the user says things like: "
+                        + "; ".join(f'"{p}"' for p in self.trigger_phrases)
+                        + "."
+                        if self.trigger_phrases else ""
+                    )
                 ),
                 "parameters": self.to_json_schema(include_dry_run=True),
             },
@@ -1338,7 +1345,162 @@ def build_multiple_choice_questions(
         "category": category,
         "suggested_names": dedup_names,
         "questions": questions,
+        "adaptive_questions": _adaptive_questions(questions, category),
+        "all_questions": questions,
     }
+
+
+MAX_QUESTIONS = 3
+
+
+def _adaptive_questions(questions: list[dict[str, Any]], category: str) -> list[dict[str, Any]]:
+    """Ask only what changes the recipe; never more than MAX_QUESTIONS.
+
+    When the recording context already tells us the kind of task, the "what did you
+    show me" question is skipped (its pre-selected answer still applies).
+    """
+    asked = [q for q in questions if not (q["id"] == "q_action" and category != "general")]
+    if len(asked) > MAX_QUESTIONS:
+        asked = [q for q in asked if q["id"] != "q_safety"]
+    return asked[:MAX_QUESTIONS]
+
+
+def _question_options(mc: dict[str, Any], qid: str) -> dict[str, dict[str, Any]]:
+    for q in mc.get("all_questions") or mc.get("questions") or []:
+        if q["id"] == qid:
+            return {o["id"]: o for o in q.get("options", [])}
+    return {}
+
+
+_KNOWN_APPS = [
+    ("gimp", "GIMP"), ("inkscape", "Inkscape"), ("blender", "Blender"),
+    ("libreoffice writer", "LibreOffice Writer"), ("libreoffice calc", "LibreOffice Calc"),
+    ("libreoffice impress", "LibreOffice Impress"), ("microsoft word", "Microsoft Word"),
+    ("excel", "Microsoft Excel"), ("powerpoint", "Microsoft PowerPoint"),
+    ("visual studio code", "VS Code"), ("thunderbird", "Thunderbird"), ("slack", "Slack"),
+    ("firefox", "Firefox"), ("chromium", "Chromium"), ("google chrome", "Google Chrome"),
+    ("chrome", "Google Chrome"), ("nautilus", "Files"), ("dolphin", "Files"), ("thunar", "Files"),
+    ("konsole", "Terminal"), ("xterm", "Terminal"), ("terminal", "Terminal"),
+]
+
+
+def app_name_from_window_title(title: str) -> str:
+    """Best-effort app name from a window title such as 'photo.png - GIMP'."""
+    raw = (title or "").strip()
+    if not raw:
+        return ""
+    lower = raw.lower()
+    if re.match(r"^[\w.-]+@[\w.-]+:", raw):
+        return "Terminal"
+    for needle, name in _KNOWN_APPS:
+        if needle in lower:
+            return name
+    for sep in (" — ", " - ", " | ", " – "):
+        if sep in raw:
+            tail = raw.rsplit(sep, 1)[1].strip()
+            if 1 < len(tail) <= 40:
+                return tail
+    return ""
+
+
+def build_naming_suggestions(
+    store: Any,
+    window_titles: list[str] | None,
+    current_app: str,
+    current_task: str,
+    category_names: list[str],
+) -> dict[str, Any]:
+    """Pre-fill the Name-it page: detected app, prior apps, and 3 task-name options."""
+    from collections import Counter
+
+    counts = Counter(a for a in (app_name_from_window_title(w) for w in (window_titles or [])) if a)
+    detected = counts.most_common(1)[0][0] if counts else ""
+    generic_app = (not current_app) or current_app in {"Quick Workflows", "Local Workspace"}
+    app_choice = detected or ("" if generic_app else current_app)
+
+    prior: list[str] = []
+    with store.connect() as db:
+        tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if {"training_apps", "training_tasks"}.issubset(tables):
+            for row in db.execute(
+                """SELECT a.name FROM training_apps a
+                   WHERE EXISTS (SELECT 1 FROM training_tasks t WHERE t.app_id=a.id)
+                   ORDER BY a.created_at DESC LIMIT 12"""
+            ):
+                name = row[0]
+                if name not in {"Quick Workflows", "Local Workspace"} and name not in prior:
+                    prior.append(name)
+    app_options = [a for a in ([app_choice] if app_choice else []) + prior if a]
+    app_options = list(dict.fromkeys(app_options))[:6]
+
+    options: list[str] = []
+    if current_task and not current_task.startswith("Quick Workflow"):
+        options.append(current_task)
+    if detected and (not category_names or category_names[0].startswith("Organize & Rename")):
+        options += [f"Edit in {detected}", f"Export from {detected}", f"My {detected} routine"]
+    options += category_names
+    task_options = list(dict.fromkeys(o for o in options if o))[:3]
+    return {"detected_app": app_choice, "app_options": app_options, "task_options": task_options}
+
+
+def rename_session_task(store: Any, session_id: str, app_name: str, task_name: str) -> dict[str, Any]:
+    """Apply the Name-it page: move/rename the task under the chosen app (created if new)."""
+    sid = str(session_id)
+    app_name = app_name.strip()[:100]
+    task_name = task_name.strip()[:160]
+    if not app_name or not task_name:
+        raise ValueError("App and task name are required")
+    store.get_session(sid)
+    task_id = sid
+    with store.lock:
+        with store.connect() as db:
+            row = db.execute("SELECT task_id FROM training_versions WHERE session_id=?", (sid,)).fetchone()
+            if row is not None:
+                task_id = row[0]
+                app_row = db.execute("SELECT id, name FROM training_apps WHERE name=?", (app_name,)).fetchone()
+                if app_row is None:
+                    aid = str(uuid.uuid4())
+                    db.execute("INSERT INTO training_apps VALUES(?,?,?)", (aid, app_name, _now()))
+                else:
+                    aid, app_name = app_row[0], app_row[1]
+                final = task_name
+                n = 2
+                while db.execute(
+                    "SELECT 1 FROM training_tasks WHERE app_id=? AND name=? AND id<>?", (aid, final, task_id)
+                ).fetchone():
+                    final = f"{task_name} #{n}"
+                    n += 1
+                task_name = final
+                db.execute("UPDATE training_tasks SET app_id=?, name=? WHERE id=?", (aid, task_name, task_id))
+        answers = dict(store.get_session(sid).get("answers") or {})
+        answers["teaching_task_name"] = task_name
+        store.update_session(sid, {"title": f"Training · {task_name}", "answers": answers})
+    existing = get_hybrid_recipe(store, task_id)
+    if existing is not None:
+        save_hybrid_recipe(store, task_id, existing.model_copy(update={"title": task_name, "app_name": app_name}))
+    return {"session_id": sid, "task_id": task_id, "app_name": app_name, "task_name": task_name}
+
+
+def _trigger_phrases(task_name: str, app_name: str, recipe: HybridRecipe) -> dict[str, Any]:
+    ask = next((p for p in recipe.parameters if p.required), None)
+    first = ask or (recipe.parameters[0] if recipe.parameters else None)
+    base = task_name.strip()
+    lead = base[:1].lower() + base[1:] if base else "run my task"
+    if ask is not None:
+        example = str(ask.default or "…")
+        say = f"{base} for {example} in {app_name}"
+        phrases = [say, f"Do my {base} task for {example}", f"Use HoldMyBeer: {lead} ({example})"]
+    else:
+        say = f"{base} in {app_name}"
+        phrases = [say, f"Do my {base} task", f"Use HoldMyBeer to {lead}"]
+    try_param = None
+    if first is not None:
+        try_param = {
+            "name": first.name,
+            "label": first.description or first.name,
+            "default": first.default,
+        }
+    return {"say_this": say, "trigger_phrases": phrases, "try_param": try_param}
 
 
 def _recipe_from_choices(
@@ -1466,6 +1628,7 @@ def generate_auto_review(
     session_id: str,
     window_title: str | None = None,
     duration_seconds: float | None = None,
+    window_titles: list[str] | None = None,
 ) -> dict[str, Any]:
     """Automatically inspect a recorded session, synthesize a TeachingProposal + Multiple-Choice Questions, and return ready state."""
     from .proposals import create_proposal
@@ -1535,9 +1698,9 @@ def generate_auto_review(
         saved_choices=saved_choices,
     )
 
-    chosen_map = {q["id"]: q["selected"] for q in mc["questions"]}
-    q1_opts = {o["id"]: o for o in mc["questions"][0]["options"]}
-    q3_opts = {o["id"]: o for o in mc["questions"][2]["options"]}
+    chosen_map = {q["id"]: q["selected"] for q in mc["all_questions"]}
+    q1_opts = _question_options(mc, "q_action")
+    q3_opts = _question_options(mc, "q_done")
     goal_desc = answers.get("teaching_goal") or q1_opts.get(chosen_map["q_action"], {}).get("goal_text", f"Perform {task_name}")
     done_desc = answers.get("teaching_done") or q3_opts.get(chosen_map["q_done"], {}).get("done_text", "Output verified cleanly")
 
@@ -1572,6 +1735,13 @@ def generate_auto_review(
         done_text=done_desc,
     )
     save_hybrid_recipe(store, task_id, recipe)
+    naming = build_naming_suggestions(
+        store,
+        list(window_titles or []) + ([window_title] if window_title else []),
+        app_name,
+        task_name,
+        mc["suggested_names"],
+    )
 
     return {
         "status": "ready",
@@ -1579,9 +1749,13 @@ def generate_auto_review(
         "task_id": task_id,
         "app_name": app_name,
         "task_name": task_name,
-        "suggested_names": mc["suggested_names"],
+        "suggested_names": naming["task_options"] or mc["suggested_names"],
+        "detected_app": naming["detected_app"],
+        "app_options": naming["app_options"],
+        "task_options": naming["task_options"] or mc["suggested_names"],
         "observations": observations,
         "multiple_choice_questions": mc["questions"],
+        "adaptive_questions": mc.get("adaptive_questions") or mc["questions"],
         "recipe_card": recipe.to_recipe_card(),
         "proposal": proposal,
     }
@@ -1630,14 +1804,14 @@ def apply_multiple_choice_answers(
         done=answers.get("teaching_done", ""),
         saved_choices=choices or {},
     )
-    applied_choices = {q["id"]: q["selected"] for q in mc["questions"]}
+    applied_choices = {q["id"]: q["selected"] for q in mc["all_questions"]}
     if choices:
         for k, v in choices.items():
             if v:
                 applied_choices[str(k)] = str(v)
 
-    q1_opts = {o["id"]: o for o in mc["questions"][0]["options"]}
-    q3_opts = {o["id"]: o for o in mc["questions"][2]["options"]}
+    q1_opts = _question_options(mc, "q_action")
+    q3_opts = _question_options(mc, "q_done")
     goal_desc = q1_opts.get(applied_choices.get("q_action", ""), {}).get("goal_text") or answers.get("teaching_goal") or f"Perform {task_name}"
     done_desc = q3_opts.get(applied_choices.get("q_done", ""), {}).get("done_text") or answers.get("teaching_done") or "Output verified cleanly"
 
@@ -1685,6 +1859,8 @@ def apply_multiple_choice_answers(
         goal_text=goal_desc,
         done_text=done_desc,
     )
+    trigger = _trigger_phrases(task_name, app_name, recipe)
+    recipe = recipe.model_copy(update={"trigger_phrases": trigger["trigger_phrases"]})
     save_hybrid_recipe(store, task_id, recipe)
 
     sandbox_result = None
@@ -1703,6 +1879,10 @@ def apply_multiple_choice_answers(
         "recipe_card": recipe.to_recipe_card(),
         "sandbox_result": sandbox_result,
         "proposal": proposal,
+        "say_this": trigger["say_this"],
+        "trigger_phrases": trigger["trigger_phrases"],
+        "try_param": trigger["try_param"],
+        "tool_name": recipe.to_openai_tool()["function"]["name"],
     }
 
 
@@ -1771,6 +1951,8 @@ def _sample_activity_loop(state: dict[str, Any]) -> None:
     seen_windows: list[str] = state["seen_windows"]
     while state.get("running"):
         w = _detect_active_window_title(display)
+        if w:
+            state.setdefault("samples", []).append(w)
         if w and w not in seen_windows:
             seen_windows.append(w)
         time.sleep(0.35)
@@ -1937,7 +2119,10 @@ def stop_native_recording(store: Any, session_id: str) -> dict[str, Any]:
             },
         )
 
-    review = generate_auto_review(store, sid, window_title=win_title or None, duration_seconds=elapsed)
+    samples = list((info or {}).get("samples") or (info or {}).get("seen_windows") or [])
+    review = generate_auto_review(
+        store, sid, window_title=win_title or None, duration_seconds=elapsed, window_titles=samples
+    )
     return {
         **review,
         "media_url": f"/api/sessions/{sid}/media",

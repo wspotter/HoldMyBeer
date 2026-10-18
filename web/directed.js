@@ -215,13 +215,6 @@
       };
     }
     if (status === "ready" && !readOnly) {
-      const mcQuickBox = document.createElement("div");
-      panel.append(mcQuickBox);
-      if (current?.id) {
-        request(`/api/sessions/${current.id}/auto-review`, {method: "POST", body: JSON.stringify({})})
-          .then(rev => renderMultipleChoiceUI(mcQuickBox, current.id, rev))
-          .catch(() => {});
-      }
       const approve = add("button", "Approve this understanding", panel, "primary"); approve.type = "button";
       approve.onclick = async () => {
         if (busy) return;
@@ -433,6 +426,7 @@
     };
   }
 
+  // Option A wizard: Name it -> Quick questions (max 3) -> Done (say-this + try it)
   function renderMultipleChoiceUI(container, sessionId, reviewData) {
     const useModal = Boolean($("mcModalOverlay") && $("mcModalBody") && container?.id === "oneClickReviewCard");
     const target = useModal ? $("mcModalBody") : container;
@@ -440,166 +434,227 @@
       $("mcModalOverlay").hidden = false;
       container.hidden = false;
       container.replaceChildren();
-      const reopen = add("button", "✨ Open AI Review Popup", container, "quiet");
+      const reopen = add("button", "Continue setting up your last recording", container, "quiet");
       reopen.type = "button";
       reopen.onclick = () => { $("mcModalOverlay").hidden = false; };
     } else {
       container.hidden = false;
     }
+    const badge = text => { if ($("mcStepBadge")) $("mcStepBadge").textContent = text; };
+    const state = {
+      app: reviewData.detected_app || reviewData.app_name || "",
+      task: (reviewData.task_options || reviewData.suggested_names || [])[0] || reviewData.task_name || "",
+      taskId: reviewData.task_id,
+      choices: {},
+    };
+    const rawQuestions = reviewData.adaptive_questions || reviewData.multiple_choice_questions || [];
+    const questions = rawQuestions.slice(0, 3);
+    for (const q of questions) state.choices[q.id] = q.selected || q.options?.[0]?.id || "";
 
-    target.replaceChildren();
-    const heading = add("h2", "Here’s what I saw — tap to confirm", target);
-    heading.style.fontSize = "19px";
-    heading.style.margin = "0 0 10px";
-    heading.tabIndex = -1;
-
-    // Compact Top Grid: Video Preview (left) + Task Name Pills (right)
-    const topGrid = document.createElement("div");
-    topGrid.className = "mc-top-grid";
-    const vidWrap = document.createElement("div");
-    const vid = document.createElement("video");
-    vid.controls = true;
-    vid.playsInline = true;
-    vid.preload = "auto";
-    const mediaUrl = reviewData.media_url || `/api/sessions/${sessionId}/media`;
-    vid.src = `${mediaUrl}?t=${Date.now()}`;
-    vidWrap.append(vid);
-    topGrid.append(vidWrap);
-
-    let selectedName = reviewData.task_name || (reviewData.suggested_names?.[0]) || "Quick Workflow";
-    const rightCol = document.createElement("div");
-    add("small", "Task Name (tap pill to switch):", rightCol);
-    const pillRow = document.createElement("div");
-    pillRow.className = "mc-pill-row";
-    pillRow.style.margin = "6px 0 0";
-    const namePills = [];
-    for (const candidate of (reviewData.suggested_names || [selectedName])) {
-      const pill = document.createElement("button");
-      pill.type = "button";
-      pill.className = "mc-name-pill" + (candidate === selectedName ? " selected" : "");
-      pill.textContent = candidate;
-      pill.onclick = () => {
-        selectedName = candidate;
-        for (const p of namePills) p.classList.toggle("selected", p.textContent === selectedName);
-      };
-      namePills.push(pill);
-      pillRow.append(pill);
-    }
-    rightCol.append(pillRow);
-    topGrid.append(rightCol);
-    target.append(topGrid);
-
-    // Step-by-Step Single Question Card (1 question visible at a time; auto-advances on tap)
-    const questions = reviewData.multiple_choice_questions || [];
-    const selectedChoices = {};
-    for (const q of questions) {
-      selectedChoices[q.id] = q.selected || q.options?.[0]?.id || "";
-    }
-
-    let currentStep = 0;
-    const stepHolder = document.createElement("div");
-    target.append(stepHolder);
-
-    function renderStepQuestion() {
-      stepHolder.replaceChildren();
-      if (!questions.length) return;
-      const q = questions[currentStep];
-      if ($("mcStepBadge")) {
-        $("mcStepBadge").textContent = `AI AUTO-REVIEW · QUESTION ${currentStep + 1} OF ${questions.length}`;
+    function chipRow(options, current, onPick) {
+      const row = document.createElement("div");
+      row.className = "mc-pill-row";
+      const pills = [];
+      for (const value of options) {
+        const pill = document.createElement("button");
+        pill.type = "button";
+        pill.className = "mc-name-pill" + (value === current ? " selected" : "");
+        pill.textContent = value;
+        pill.onclick = () => { for (const other of pills) other.classList.toggle("selected", other === pill); onPick(value); };
+        pills.push(pill);
+        row.append(pill);
       }
+      row.sync = value => { for (const pill of pills) pill.classList.toggle("selected", pill.textContent === value); };
+      return row;
+    }
+
+    // ---------- Page 1: Name it ----------
+    function pageName() {
+      badge("STEP 1 OF 3 · NAME IT");
+      target.replaceChildren();
+      const head = add("h2", "What did you just teach me?", target, "hmb-wiz-title");
+      head.tabIndex = -1;
+      const grid = document.createElement("div");
+      grid.className = "mc-top-grid";
+      const vid = document.createElement("video");
+      vid.controls = true; vid.playsInline = true; vid.preload = "metadata"; vid.muted = true;
+      vid.src = `${reviewData.media_url || `/api/sessions/${sessionId}/media`}?t=${Date.now()}`;
+      grid.append(vid);
+      const fields = document.createElement("div");
+      fields.className = "hmb-fields";
+
+      const appLabel = add("label", "App", fields); appLabel.htmlFor = "hmbAppInput";
+      const appInput = document.createElement("input");
+      appInput.id = "hmbAppInput"; appInput.maxLength = 100; appInput.value = state.app;
+      appInput.placeholder = "e.g. GIMP, MS Word";
+      fields.append(appInput);
+      const appChips = chipRow(reviewData.app_options || [], state.app, value => { appInput.value = value; validate(); });
+      fields.append(appChips);
+
+      const taskLabel = add("label", "Task", fields); taskLabel.htmlFor = "hmbTaskInput";
+      const taskInput = document.createElement("input");
+      taskInput.id = "hmbTaskInput"; taskInput.maxLength = 160; taskInput.value = state.task;
+      taskInput.placeholder = "e.g. Resize image to 1080px";
+      fields.append(taskInput);
+      const taskChips = chipRow(reviewData.task_options || reviewData.suggested_names || [], state.task, value => { taskInput.value = value; validate(); });
+      fields.append(taskChips);
+      grid.append(fields);
+      target.append(grid);
+
+      const next = add("button", "Looks right →", target, "mc-approve-btn");
+      next.id = "hmbNameNext"; next.type = "button";
+      const note = add("p", "", target, "task-status");
+      function validate() {
+        appChips.sync(appInput.value.trim()); taskChips.sync(taskInput.value.trim());
+        next.disabled = !appInput.value.trim() || !taskInput.value.trim();
+      }
+      appInput.oninput = validate; taskInput.oninput = validate;
+      for (const input of [appInput, taskInput]) input.onkeydown = event => { if (event.key === "Enter" && !next.disabled) next.click(); };
+      validate();
+      next.onclick = async () => {
+        next.disabled = true; next.textContent = "Saving…";
+        try {
+          const saved = await request(`/api/sessions/${sessionId}/name`, {
+            method: "POST",
+            body: JSON.stringify({app_name: appInput.value.trim(), task_name: taskInput.value.trim()}),
+          });
+          state.app = saved.app_name; state.task = saved.task_name; state.taskId = saved.task_id;
+          questions.length ? pageQuestions(0) : finish();
+        } catch (err) {
+          note.textContent = `Could not save the name: ${err.message}`;
+          next.disabled = false; next.textContent = "Looks right →";
+        }
+      };
+      (appInput.value ? taskInput : appInput).focus();
+    }
+
+    // ---------- Page 2: Quick questions (1-3, pre-answered) ----------
+    function pageQuestions(index) {
+      const q = questions[index];
+      badge(`STEP 2 OF 3 · QUICK QUESTION ${index + 1} OF ${questions.length}`);
+      target.replaceChildren();
+      const sub = add("p", `${state.task} · ${state.app}`, target, "eyebrow");
+      sub.style.margin = "0 0 6px";
       const card = document.createElement("div");
       card.className = "mc-question-card";
-      card.style.margin = "8px 0";
-      add("h3", q.question, card);
+      const title = add("h3", q.question.replace(/^\d+\.\s*/, ""), card);
+      title.tabIndex = -1;
+      add("small", "My best guess is already selected — tap to change.", card);
       const list = document.createElement("div");
       list.className = "mc-options-list";
-      for (const opt of (q.options || [])) {
+      for (const opt of q.options || []) {
         const btn = document.createElement("button");
         btn.type = "button";
-        const isSel = opt.id === selectedChoices[q.id];
-        btn.className = "mc-option-btn" + (isSel ? " selected" : "");
-        btn.textContent = `${isSel ? "🔘" : "⚪"} ${opt.label}`;
+        const selected = opt.id === state.choices[q.id];
+        btn.className = "mc-option-btn" + (selected ? " selected" : "");
+        btn.setAttribute("aria-pressed", selected ? "true" : "false");
+        btn.textContent = `${selected ? "🔘" : "⚪"} ${opt.label}`;
         btn.onclick = () => {
-          selectedChoices[q.id] = opt.id;
-          if (currentStep < questions.length - 1) {
-            currentStep += 1;
-            renderStepQuestion();
-          } else {
-            renderStepQuestion();
-          }
+          state.choices[q.id] = opt.id;
+          index < questions.length - 1 ? pageQuestions(index + 1) : finish();
         };
         list.append(btn);
       }
       card.append(list);
+      target.append(card);
+      const nav = document.createElement("div");
+      nav.className = "mc-step-nav";
+      const back = add("button", "← Back", nav, "quiet"); back.type = "button";
+      back.onclick = () => (index === 0 ? pageName() : pageQuestions(index - 1));
+      const skip = add("button", "Your guesses are fine — finish ✓", nav, "quiet");
+      skip.id = "oneClickApproveBtn"; skip.type = "button";
+      skip.onclick = finish;
+      target.append(nav);
+      title.focus();
+    }
+
+    // ---------- Page 3: Done — what to say + try it ----------
+    async function finish() {
+      badge("STEP 3 OF 3 · DONE");
+      target.replaceChildren();
+      add("h2", "Saving what you taught me…", target, "hmb-wiz-title");
+      let res;
+      try {
+        res = await request(`/api/sessions/${sessionId}/answer-choices`, {
+          method: "POST",
+          body: JSON.stringify({selected_name: state.task, choices: state.choices, run_sandbox: true}),
+        });
+      } catch (err) {
+        target.replaceChildren();
+        add("h2", "Something went wrong saving this", target, "hmb-wiz-title");
+        add("p", err.message, target, "task-status");
+        const retry = add("button", "Try again", target, "mc-approve-btn"); retry.type = "button"; retry.onclick = finish;
+        return;
+      }
+      state.taskId = res.task_id || state.taskId;
+      target.replaceChildren();
+      const done = add("h2", `🎉 Learned: ${res.task_name}`, target, "hmb-wiz-title");
+      done.tabIndex = -1;
+      add("p", "From now on, just tell your assistant:", target, "compact-copy");
+      const sayBox = document.createElement("div");
+      sayBox.className = "hmb-say-box";
+      sayBox.id = "oneClickResultBox";
+      add("strong", `“${res.say_this}”`, sayBox);
+      const copy = add("button", "Copy", sayBox, "quiet"); copy.type = "button";
+      copy.onclick = async () => {
+        try { await navigator.clipboard.writeText(res.say_this); copy.textContent = "Copied ✓"; }
+        catch { copy.textContent = "Select & copy"; }
+      };
+      target.append(sayBox);
+      if ((res.trigger_phrases || []).length > 1) {
+        add("small", `Also works: ${res.trigger_phrases.slice(1).map(p => `“${p}”`).join(" · ")}`, target);
+      }
+
+      const tryWrap = document.createElement("div");
+      tryWrap.className = "hmb-try";
+      add("h3", "Try it now (safe preview — nothing real changes)", tryWrap);
+      const row = document.createElement("div");
+      row.className = "hmb-try-row";
+      let tryInput = null;
+      if (res.try_param) {
+        tryInput = document.createElement("input");
+        tryInput.id = "hmbTryInput";
+        tryInput.value = res.try_param.default ?? "";
+        tryInput.placeholder = res.try_param.label || res.try_param.name;
+        tryInput.setAttribute("aria-label", res.try_param.label || res.try_param.name);
+        row.append(tryInput);
+      }
+      const tryBtn = add("button", "▶ Try it", row, "primary"); tryBtn.id = "hmbTryBtn"; tryBtn.type = "button";
+      tryWrap.append(row);
+      const tryOut = add("p", "", tryWrap, "task-status");
+      tryOut.id = "hmbTryResult";
+      tryBtn.onclick = async () => {
+        tryBtn.disabled = true; tryOut.textContent = "Running a safe preview…";
+        try {
+          const parameters = res.try_param && tryInput ? {[res.try_param.name]: tryInput.value.trim()} : {};
+          const run = await request(`/api/tasks/${encodeURIComponent(state.taskId)}/hybrid-run`, {
+            method: "POST", body: JSON.stringify({dry_run: true, parameters}),
+          });
+          tryOut.textContent = run.status === "verified"
+            ? `✅ Worked in the safe preview (${(run.steps || []).length} step${(run.steps || []).length === 1 ? "" : "s"} checked). Your real files weren't touched.`
+            : `⚠️ It paused to ask for help: ${run.diagnostic_snapshot?.observed_state || "something looked different"}.`;
+        } catch (err) {
+          tryOut.textContent = `Preview failed: ${err.message}`;
+        } finally { tryBtn.disabled = false; }
+      };
+      target.append(tryWrap);
 
       const nav = document.createElement("div");
       nav.className = "mc-step-nav";
-      const prevBtn = add("button", "← Previous", nav, "quiet");
-      prevBtn.type = "button";
-      prevBtn.disabled = currentStep === 0;
-      prevBtn.onclick = () => { if (currentStep > 0) { currentStep -= 1; renderStepQuestion(); } };
-
-      const stepInfo = add("small", `Step ${currentStep + 1} of ${questions.length} (tap any option to advance)`, nav);
-      stepInfo.style.margin = "0";
-
-      const nextBtn = add("button", currentStep < questions.length - 1 ? "Next →" : "Done", nav, "quiet");
-      nextBtn.type = "button";
-      nextBtn.disabled = currentStep >= questions.length - 1;
-      nextBtn.onclick = () => { if (currentStep < questions.length - 1) { currentStep += 1; renderStepQuestion(); } };
-      card.append(nav);
-      stepHolder.append(card);
+      const another = add("button", "● Record another task", nav, "quiet"); another.type = "button";
+      another.onclick = () => {
+        if ($("mcModalOverlay")) $("mcModalOverlay").hidden = true;
+        container.hidden = true;
+        $("oneClickRecordBtn")?.focus();
+      };
+      const close = add("button", "Close", nav, "quiet"); close.type = "button";
+      close.onclick = () => { if ($("mcModalOverlay")) $("mcModalOverlay").hidden = true; };
+      target.append(nav);
+      ocStatus(`Learned “${res.task_name}”. Say: “${res.say_this}”.`);
+      done.focus();
     }
 
-    renderStepQuestion();
-
-    const approveBtn = add("button", "✅ Confirm Answers & Test in Safe Sandbox", target, "mc-approve-btn");
-    approveBtn.id = "oneClickApproveBtn";
-    approveBtn.type = "button";
-
-    const resultBox = document.createElement("div");
-    resultBox.id = "oneClickResultBox";
-    resultBox.hidden = true;
-    target.append(resultBox);
-
-    approveBtn.onclick = async () => {
-      approveBtn.disabled = true;
-      approveBtn.textContent = "Running Safe Sandbox Dry-Run…";
-      try {
-        const res = await request(`/api/sessions/${sessionId}/answer-choices`, {
-          method: "POST",
-          body: JSON.stringify({
-            selected_name: selectedName,
-            choices: selectedChoices,
-            run_sandbox: true,
-          }),
-        });
-        stepHolder.hidden = true;
-        resultBox.replaceChildren();
-        resultBox.className = "mc-verified-banner";
-        resultBox.hidden = false;
-        add("h3", `✅ Approved & Verified in Safe Sandbox: ${res.task_name}`, resultBox);
-        if (res.recipe_card) {
-          add("p", `When you give me: ${(res.recipe_card.when_you_give_me || []).join("; ")}`, resultBox);
-          add("p", `I will do: ${(res.recipe_card.i_will_do || []).join(" → ")}`, resultBox);
-          add("p", `You will get: ${res.recipe_card.you_will_get}`, resultBox);
-        }
-        const filesAfter = res.sandbox_result?.before_after_diff?.files_after || [];
-        if (filesAfter.length) {
-          add("p", `Sandbox output files verified (real files untouched): ${filesAfter.join(", ")}`, resultBox, "task-status");
-        }
-        approveBtn.textContent = "✅ Done — Close Popup";
-        approveBtn.onclick = () => {
-          if ($("mcModalOverlay")) $("mcModalOverlay").hidden = true;
-        };
-        ocStatus(`Approved "${res.task_name}" and verified in Safe Sandbox!`);
-      } catch (err) {
-        ocStatus(`Could not confirm choices: ${err.message}`);
-      } finally {
-        approveBtn.disabled = false;
-      }
-    };
-
-    heading.focus();
+    pageName();
   }
 
   async function processOneClickBlob(blob, windowTitle, durationSec) {

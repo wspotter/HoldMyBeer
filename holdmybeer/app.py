@@ -119,6 +119,11 @@ class QuickRenameInput(StrictModel):
 class ExportSkillInput(StrictModel):
     output_dir: str | None = Field(default=None, max_length=1000)
 
+class NameTaskInput(StrictModel):
+    app_name: str = Field(min_length=1, max_length=100)
+    task_name: str = Field(min_length=1, max_length=160)
+
+
 class AutoReviewInput(StrictModel):
     window_title: str | None = Field(default=None, max_length=300)
     duration_seconds: float | None = Field(default=None, ge=0.0, le=86400.0)
@@ -730,6 +735,14 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         except HTTPException:
             raise
         except Exception as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/sessions/{session_id}/name")
+    def post_session_name(session_id: uuid.UUID, body: NameTaskInput):
+        from .hybrid import rename_session_task
+        try:
+            return rename_session_task(app.state.store, str(session_id), body.app_name, body.task_name)
+        except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 
     @app.post("/api/sessions/{session_id}/answer-choices")

@@ -184,8 +184,9 @@ def test_guided_demo_preserves_dirty_workflow_and_requires_explicit_review(serve
             assert len(httpx.get(base + "/api/sessions").json()["sessions"]) == 1
             expect(page.locator("#notes")).to_have_value("Unsaved personal edit")
 
-            page.locator("#save").click()
-            expect(page.locator("#guidedStatus")).to_be_visible()
+            with page.expect_response(lambda r: r.request.method == "PUT" and "/api/sessions/" in r.url):
+                page.locator("#save").click()
+            expect(page.locator("#toast")).to_contain_text("Notes saved")
             page.locator("#guidedStart").click()
             expect(page.locator("#steps .step")).to_have_count(4)
             expect(page.locator("#guidedStatus")).to_contain_text("1/4")

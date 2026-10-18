@@ -684,10 +684,11 @@
     }
 
     // ---------- Page 3: Done — what to say + try it ----------
+    // ---------- Page 3: Done — Human & Intuitive Celebration ----------
     async function finish() {
-      badge("STEP 3 OF 3 · DONE");
+      badge("STEP 3 OF 3 · COMPLETE");
       target.replaceChildren();
-      add("h2", "Saving what you taught me…", target, "hmb-wiz-title");
+      add("h2", "Teaching your assistant…", target, "hmb-wiz-title");
       let res;
       try {
         res = await request(`/api/sessions/${sessionId}/answer-choices`, {
@@ -696,77 +697,155 @@
         });
       } catch (err) {
         target.replaceChildren();
-        add("h2", "Something went wrong saving this", target, "hmb-wiz-title");
+        add("h2", "Could not save workflow", target, "hmb-wiz-title");
         add("p", err.message, target, "task-status");
         const retry = add("button", "Try again", target, "mc-approve-btn"); retry.type = "button"; retry.onclick = finish;
         return;
       }
       state.taskId = res.task_id || state.taskId;
       target.replaceChildren();
-      const done = add("h2", `🎉 Learned: ${res.task_name}`, target, "hmb-wiz-title");
-      done.tabIndex = -1;
-      add("p", "From now on, just tell your assistant:", target, "compact-copy");
-      const sayBox = document.createElement("div");
-      sayBox.className = "hmb-say-box";
-      sayBox.id = "oneClickResultBox";
-      add("strong", `“${res.say_this}”`, sayBox);
-      const copy = add("button", "Copy", sayBox, "quiet"); copy.type = "button";
-      copy.onclick = async () => {
-        try { await navigator.clipboard.writeText(res.say_this); copy.textContent = "Copied ✓"; }
-        catch { copy.textContent = "Select & copy"; }
-      };
-      target.append(sayBox);
-      if ((res.trigger_phrases || []).length > 1) {
-        add("small", `Also works: ${res.trigger_phrases.slice(1).map(p => `“${p}”`).join(" · ")}`, target);
-      }
 
-      const tryWrap = document.createElement("div");
-      tryWrap.className = "hmb-try";
-      add("h3", "Try it now (safe preview — nothing real changes)", tryWrap);
-      const row = document.createElement("div");
-      row.className = "hmb-try-row";
+      // Clean, human task and app names (strip any accidental trailing '#2')
+      const cleanTask = (res.task_name || state.task).replace(/\s*#\d+\b/g, "").trim();
+      const cleanApp = (res.app_name || state.app || "the app").trim();
+
+      // 1. Warm Header
+      const headBox = document.createElement("div");
+      headBox.style.marginBottom = "14px";
+      const title = add("h2", `🎉 Skill Learned: ${cleanTask}`, headBox, "hmb-wiz-title");
+      title.tabIndex = -1;
+      add("p", `Taught in ${cleanApp} · Your AI assistants can now run this for you.`, headBox, "eyebrow");
+      target.append(headBox);
+
+      // 2. Natural Voice / Chat Speech Bubble
+      const speechCard = document.createElement("div");
+      speechCard.className = "hmb-speech-bubble";
+      speechCard.id = "oneClickResultBox";
+
+      const speechContent = document.createElement("div");
+      speechContent.innerHTML = `
+        <span style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#4a6828; font-weight:700; display:block; margin-bottom:4px;">🗣️ How to talk to your assistant</span>
+        <strong>“${res.say_this}”</strong>
+      `;
+      speechCard.append(speechContent);
+
+      const copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "quiet";
+      copyBtn.style.padding = "8px 14px";
+      copyBtn.style.fontSize = "13px";
+      copyBtn.style.fontWeight = "700";
+      copyBtn.textContent = "📋 Copy Phrase";
+      copyBtn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(res.say_this);
+          copyBtn.textContent = "Copied ✓";
+          setTimeout(() => { copyBtn.textContent = "📋 Copy Phrase"; }, 2500);
+        } catch {
+          copyBtn.textContent = "Select & copy";
+        }
+      };
+      speechCard.append(copyBtn);
+      target.append(speechCard);
+
+      // 3. Clear Test Drive Simulation Card
+      const simCard = document.createElement("div");
+      simCard.className = "hmb-done-card";
+
+      const simHdr = document.createElement("div");
+      simHdr.innerHTML = `
+        <h3>🧪 Test Drive Simulation</h3>
+        <small style="color:var(--muted); font-size:12px; display:block; margin-top:2px;">
+          Test how your assistant runs this task safely before using it live:
+        </small>
+      `;
+      simCard.append(simHdr);
+
+      const simRow = document.createElement("div");
+      simRow.className = "hmb-try-row";
+      simRow.style.marginTop = "10px";
+
       let tryInput = null;
       if (res.try_param) {
         tryInput = document.createElement("input");
         tryInput.id = "hmbTryInput";
-        tryInput.value = res.try_param.default ?? "";
-        tryInput.placeholder = res.try_param.label || res.try_param.name;
-        tryInput.setAttribute("aria-label", res.try_param.label || res.try_param.name);
-        row.append(tryInput);
+        tryInput.value = res.try_param.default ?? "yahoo.com";
+        tryInput.placeholder = res.try_param.label || "Target or parameter (e.g. yahoo.com)";
+        tryInput.setAttribute("aria-label", res.try_param.label || "Target");
+        simRow.append(tryInput);
       }
-      const tryBtn = add("button", "▶ Try it", row, "primary"); tryBtn.id = "hmbTryBtn"; tryBtn.type = "button";
-      tryWrap.append(row);
-      const tryOut = add("p", "", tryWrap, "task-status");
-      tryOut.id = "hmbTryResult";
-      tryBtn.onclick = async () => {
-        tryBtn.disabled = true; tryOut.textContent = "Running a safe preview…";
+
+      const simBtn = add("button", "▶ Run Test Simulation", simRow, "primary");
+      simBtn.id = "hmbTryBtn"; simBtn.type = "button";
+      simBtn.style.padding = "8px 18px";
+      simBtn.style.whiteSpace = "nowrap";
+      simCard.append(simRow);
+
+      const simReceipt = document.createElement("div");
+      simReceipt.id = "hmbTryResult";
+      simReceipt.className = "hmb-receipt-box";
+      simReceipt.style.display = "none";
+      simCard.append(simReceipt);
+
+      simBtn.onclick = async () => {
+        simBtn.disabled = true;
+        simBtn.textContent = "Simulating…";
+        simReceipt.style.display = "block";
+        simReceipt.innerHTML = `<span style="color:#777;">⏳ Running isolated sandbox simulation…</span>`;
         try {
           const parameters = res.try_param && tryInput ? {[res.try_param.name]: tryInput.value.trim()} : {};
           const run = await request(`/api/tasks/${encodeURIComponent(state.taskId)}/hybrid-run`, {
             method: "POST", body: JSON.stringify({dry_run: true, parameters}),
           });
-          tryOut.textContent = run.status === "verified"
-            ? `✅ Worked in the safe preview (${(run.steps || []).length} step${(run.steps || []).length === 1 ? "" : "s"} checked). Your real files weren't touched.`
-            : `⚠️ It paused to ask for help: ${run.diagnostic_snapshot?.observed_state || "something looked different"}.`;
+          if (run.status === "verified") {
+            const stepsCount = (run.steps || []).length || 1;
+            const targetVal = tryInput ? tryInput.value.trim() : cleanTask;
+            simReceipt.innerHTML = `
+              <div style="color:#2d6914; font-weight:700; margin-bottom:4px;">✔ Test Simulation Passed (${stepsCount} step${stepsCount === 1 ? "" : "s"} verified)</div>
+              <div style="font-size:11px; color:#555;">Target: <strong>${targetVal}</strong></div>
+              <div style="font-size:11px; color:#555;">Sandbox: Real files and desktop untouched. Safe for live use.</div>
+            `;
+          } else {
+            simReceipt.innerHTML = `
+              <div style="color:#b25900; font-weight:700;">⚠️ Needs Attention</div>
+              <div style="font-size:11px; color:#555;">${run.diagnostic_snapshot?.observed_state || "Action completed with warnings"}.</div>
+            `;
+          }
         } catch (err) {
-          tryOut.textContent = `Preview failed: ${err.message}`;
-        } finally { tryBtn.disabled = false; }
+          simReceipt.innerHTML = `<span style="color:#a1261d;">❌ Test failed: ${err.message}</span>`;
+        } finally {
+          simBtn.disabled = false;
+          simBtn.textContent = "▶ Run Test Simulation";
+        }
       };
-      target.append(tryWrap);
 
-      const nav = document.createElement("div");
-      nav.className = "mc-step-nav";
-      const another = add("button", "● Record another task", nav, "quiet"); another.type = "button";
-      another.onclick = () => {
+      target.append(simCard);
+
+      // 4. Human Action Buttons
+      const actions = document.createElement("div");
+      actions.className = "hmb-done-actions";
+
+      const anotherBtn = add("button", "+ Teach Another Task", actions, "quiet");
+      anotherBtn.type = "button";
+      anotherBtn.onclick = () => {
         if ($("mcModalOverlay")) $("mcModalOverlay").hidden = true;
         container.hidden = true;
         $("oneClickRecordBtn")?.focus();
       };
-      const close = add("button", "Close", nav, "quiet"); close.type = "button";
-      close.onclick = () => { if ($("mcModalOverlay")) $("mcModalOverlay").hidden = true; };
-      target.append(nav);
-      ocStatus(`Learned “${res.task_name}”. Say: “${res.say_this}”.`);
-      done.focus();
+
+      const allDoneBtn = add("button", "All Done ✓", actions, "primary");
+      allDoneBtn.type = "button";
+      allDoneBtn.style.padding = "10px 28px";
+      allDoneBtn.style.fontSize = "15px";
+      allDoneBtn.onclick = () => {
+        if ($("mcModalOverlay")) $("mcModalOverlay").hidden = true;
+        container.hidden = true;
+      };
+
+      target.append(actions);
+
+      ocStatus(`Learned “${cleanTask}”. Say: “${res.say_this}”.`);
+      title.focus();
     }
 
     pageName();

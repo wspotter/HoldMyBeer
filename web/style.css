@@ -1087,3 +1087,56 @@ h1:focus, h2:focus { outline: none; }
   color: #4b483e;
   border: 1px solid var(--line);
 }
+
+/* Redesigned Human-Friendly Step 3 */
+.hmb-done-card {
+  background: #fbfaf5;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 12px 0;
+}
+.hmb-done-card h3 {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin: 0;
+}
+.hmb-speech-bubble {
+  background: #eef3e6;
+  border: 2px solid #5a7d36;
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0 6px;
+}
+.hmb-speech-bubble strong {
+  font-size: 16px;
+  color: #1e2e11;
+  font-weight: 700;
+  line-height: 1.4;
+  display: block;
+}
+.hmb-receipt-box {
+  background: #ffffff;
+  border: 1px solid #dcd7c8;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-top: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: #2e3827;
+  line-height: 1.6;
+}
+.hmb-done-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+}

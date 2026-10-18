@@ -1470,15 +1470,12 @@ def rename_session_task(store: Any, session_id: str, app_name: str, task_name: s
                     db.execute("INSERT INTO training_apps VALUES(?,?,?)", (aid, app_name, _now()))
                 else:
                     aid, app_name = app_row[0], app_row[1]
-                final = task_name
-                n = 2
-                while db.execute(
-                    "SELECT 1 FROM training_tasks WHERE app_id=? AND name=? AND id<>?", (aid, final, task_id)
-                ).fetchone():
-                    final = f"{task_name} #{n}"
-                    n += 1
-                task_name = final
-                db.execute("UPDATE training_tasks SET app_id=?, name=? WHERE id=?", (aid, task_name, task_id))
+                existing_task = db.execute("SELECT id FROM training_tasks WHERE app_id=? AND name=?", (aid, task_name)).fetchone()
+                if existing_task is not None and existing_task[0] != task_id:
+                    task_id = existing_task[0]
+                    db.execute("UPDATE training_versions SET task_id=? WHERE session_id=?", (task_id, sid))
+                else:
+                    db.execute("UPDATE training_tasks SET app_id=?, name=? WHERE id=?", (aid, task_name, task_id))
         answers = dict(store.get_session(sid).get("answers") or {})
         answers["teaching_task_name"] = task_name
         store.update_session(sid, {"title": f"Training · {task_name}", "answers": answers})
@@ -1497,23 +1494,44 @@ def rename_session_task(store: Any, session_id: str, app_name: str, task_name: s
 
 
 def _trigger_phrases(task_name: str, app_name: str, recipe: HybridRecipe) -> dict[str, Any]:
+    clean_title = re.sub(r"\s*#\d+\b", "", task_name).strip() or task_name.strip()
+    clean_app = app_name.strip() or "the app"
     ask = next((p for p in recipe.parameters if p.required), None)
     first = ask or (recipe.parameters[0] if recipe.parameters else None)
-    base = task_name.strip()
-    lead = base[:1].lower() + base[1:] if base else "run my task"
+
     if ask is not None:
-        example = str(ask.default or "…")
-        say = f"{base} for {example} in {app_name}"
-        phrases = [say, f"Do my {base} task for {example}", f"Use HoldMyBeer: {lead} ({example})"]
+        example = str(ask.default or "").strip()
+        if not example or example in {"…", "...", "None"}:
+            pname = ask.name.lower()
+            if any(k in pname for k in ("host", "domain", "url")):
+                example = "yahoo.com"
+            elif any(k in pname for k in ("file", "path")):
+                example = "document.txt"
+            else:
+                example = "sample"
+        say = f"Hey Ollie, run {clean_title} for {example} in {clean_app}"
+        phrases = [
+            say,
+            f"Run {clean_title} for {example} in {clean_app}",
+            f"{clean_title} in {clean_app}",
+        ]
     else:
-        say = f"{base} in {app_name}"
-        phrases = [say, f"Do my {base} task", f"Use HoldMyBeer to {lead}"]
+        say = f"Hey Ollie, run {clean_title} in {clean_app}"
+        phrases = [
+            say,
+            f"Run {clean_title} in {clean_app}",
+            f"Perform {clean_title}",
+        ]
     try_param = None
     if first is not None:
+        default_val = first.default
+        if not default_val or str(default_val).strip() in {"…", "...", "None"}:
+            pname = first.name.lower()
+            default_val = "yahoo.com" if any(k in pname for k in ("host", "domain", "url")) else ("document.txt" if "file" in pname else "sample")
         try_param = {
             "name": first.name,
-            "label": first.description or first.name,
-            "default": first.default,
+            "label": first.description or f"Target or input for {clean_title}",
+            "default": default_val,
         }
     return {"say_this": say, "trigger_phrases": phrases, "try_param": try_param}
 

@@ -12,6 +12,8 @@ The hybrid file runner executes only deterministic operations: `file_rename_batc
 
 The Hermes integration is the `holdmybeer-mcp` stdio server. `holdmybeer connect hermes` is an explicit-home configuration helper; exported skills and MCP configuration do not prove installation, client connection, or tool consumption. The native Hermes plugin scaffold remains status-only.
 
+The recording naming form offers explicit existing-app and per-app task selectors beside editable names. App changes refresh task choices and clear the prior app’s selected task. Selecting an existing task saves the new recording as its next version; the saved-version hint makes this visible before saving. Native selects remain available after text typos, without relying on filtered browser datalist suggestions.
+
 ## Local teaching engine
 
 FastAPI serves the local app → task training workspace, recording UI, and separate Advanced workshops on loopback:

@@ -532,9 +532,9 @@
       (appInput.value ? taskInput : appInput).focus();
     }
 
-    // ---------- Page 2: Intuitive Behavioral Setup (Smart Cockpit) ----------
+    // ---------- Page 2: Easy Mode by default + Expandable Admin Mode ----------
     function pageSmartTuning() {
-      badge("STEP 2 OF 3 · TUNE BEHAVIOR");
+      badge("STEP 2 OF 3 · ACTIVATE");
       target.replaceChildren();
 
       state.choices.q_action = state.choices.q_action || "recorded_flow";
@@ -542,12 +542,45 @@
       state.choices.q_done = state.choices.q_done || "window_minimized";
       state.choices.q_safety = state.choices.q_safety || "sandbox_first";
 
+      let adminMode = localStorage.getItem("hmb_admin_mode") === "true";
+
       const top = document.createElement("div");
-      top.style.marginBottom = "10px";
-      const heading = add("h2", "How should your assistant run this?", top, "hmb-wiz-title");
+      top.style.marginBottom = "8px";
+      const heading = add("h2", "Ready to activate your assistant?", top, "hmb-wiz-title");
       heading.tabIndex = -1;
       add("p", `${state.task} in ${state.app}`, top, "eyebrow");
       target.append(top);
+
+      // Trigger box (displayed in both easy and admin mode)
+      const triggerBox = document.createElement("div");
+      triggerBox.className = "hmb-say-box";
+      triggerBox.style.margin = "6px 0 10px";
+      const triggerStrong = document.createElement("strong");
+      function updateTrigger() {
+        const ask = state.choices.q_input === "ask_each_time";
+        triggerStrong.textContent = ask ? `🗣️ “${state.task} for [input] in ${state.app}”` : `🗣️ “${state.task} in ${state.app}”`;
+        updatePills();
+      }
+      triggerBox.append(triggerStrong);
+      target.append(triggerBox);
+
+      // Easy Mode Summary Pills
+      const pillRow = document.createElement("div");
+      pillRow.className = "hmb-easy-summary";
+      function updatePills() {
+        pillRow.innerHTML = `
+          <span class="hmb-easy-pill">⚡ ${state.choices.q_input === "ask_each_time" ? "Ask for Input" : "Exact Replay"}</span>
+          <span class="hmb-easy-pill">👁️ ${state.choices.q_done === "verified_output" ? "File Output Checked" : "App Completes"}</span>
+          <span class="hmb-easy-pill">🛡️ ${state.choices.q_safety === "pause_immediately" ? "Pause & Ask" : "Safe Sandbox First"}</span>
+        `;
+      }
+      updatePills();
+      target.append(pillRow);
+
+      // Admin Mode Options Container (collapsed by default in Easy Mode)
+      const adminContainer = document.createElement("div");
+      adminContainer.id = "hmbAdminContainer";
+      adminContainer.hidden = !adminMode;
 
       const grid = document.createElement("div");
       grid.className = "hmb-tune-grid";
@@ -573,7 +606,7 @@
           { id: "verified_output", label: "Receipt / File Saved", desc: "When verified output file exists" },
         ],
         current: state.choices.q_done,
-        onSelect: val => { state.choices.q_done = val; },
+        onSelect: val => { state.choices.q_done = val; updateTrigger(); },
       }));
 
       grid.append(createTuneRow({
@@ -585,34 +618,39 @@
           { id: "pause_immediately", label: "Pause & Ask Me", desc: "Always confirm before running" },
         ],
         current: state.choices.q_safety,
-        onSelect: val => { state.choices.q_safety = val; },
+        onSelect: val => { state.choices.q_safety = val; updateTrigger(); },
       }));
 
-      target.append(grid);
+      adminContainer.append(grid);
+      target.append(adminContainer);
 
-      const triggerBox = document.createElement("div");
-      triggerBox.className = "hmb-say-box";
-      triggerBox.style.margin = "12px 0 10px";
-      const triggerStrong = document.createElement("strong");
-      function updateTrigger() {
-        const ask = state.choices.q_input === "ask_each_time";
-        triggerStrong.textContent = ask ? `🗣️ “${state.task} for [input] in ${state.app}”` : `🗣️ “${state.task} in ${state.app}”`;
-      }
-      updateTrigger();
-      triggerBox.append(triggerStrong);
-      target.append(triggerBox);
-
+      // Primary Navigation & Action
       const nav = document.createElement("div");
       nav.className = "mc-step-nav";
+      nav.style.marginTop = "14px";
       const back = add("button", "← Back to naming", nav, "quiet"); back.type = "button";
       back.onclick = pageName;
 
-      const finishBtn = add("button", "Looks Perfect — Save & Activate ✨", nav, "primary");
+      const finishBtn = add("button", "Looks Great — Save & Activate ✨", nav, "primary");
       finishBtn.id = "oneClickApproveBtn"; finishBtn.type = "button";
       finishBtn.style.padding = "10px 22px";
       finishBtn.style.fontSize = "15px";
       finishBtn.onclick = finish;
       target.append(nav);
+
+      // Toggle for Admin Mode
+      const toggleWrap = document.createElement("div");
+      toggleWrap.style.textAlign = "center";
+      toggleWrap.style.marginTop = "10px";
+      const toggleBtn = add("button", adminMode ? "▲ Hide Admin Options (Easy Mode)" : "⚙️ Admin Mode (Customize behavior & safety) ▼", toggleWrap, "hmb-admin-toggle");
+      toggleBtn.type = "button";
+      toggleBtn.onclick = () => {
+        adminMode = !adminMode;
+        localStorage.setItem("hmb_admin_mode", adminMode ? "true" : "false");
+        adminContainer.hidden = !adminMode;
+        toggleBtn.textContent = adminMode ? "▲ Hide Admin Options (Easy Mode)" : "⚙️ Admin Mode (Customize behavior & safety) ▼";
+      };
+      target.append(toggleWrap);
 
       heading.focus();
     }

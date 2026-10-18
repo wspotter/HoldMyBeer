@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>HoldMyBeer · Start here</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/style.css?v=20261018j" />
+    <link rel="stylesheet" href="/style.css?v=20261018k" />
   </head>
   <body>
     <header class="app-header">
@@ -177,7 +177,23 @@
         <h1 id="savedTitle" tabindex="-1">Saved tasks</h1>
         <p class="compact-copy">Your tasks and results stay on this computer.</p>
         <p id="savedStatus" role="status" aria-live="polite"></p>
-        <div id="savedList" class="saved-list"></div>
+        <label class="saved-archived-toggle"><input id="savedShowArchived" type="checkbox" /> Show archived</label>
+        <div id="savedWorkspace" class="saved-workspace">
+          <aside class="saved-sidebar" aria-label="Saved apps and tasks">
+            <div id="savedList" class="saved-list">
+              <div id="savedTree" class="saved-tree" aria-live="polite"></div>
+              <div id="savedLegacyList" class="saved-legacy-list"></div>
+            </div>
+          </aside>
+          <section id="savedEditor" class="saved-editor" aria-label="Selected task">
+            <div class="saved-editor-empty"><strong>Choose a task</strong><p>Its recording and editable settings will appear here.</p></div>
+          </section>
+        </div>
+        <div id="savedDirtyPrompt" class="saved-dirty-prompt" role="alert" hidden>
+          <span>You have unsaved changes.</span>
+          <button id="savedDiscardChanges" class="quiet" type="button">Discard changes</button>
+          <button id="savedKeepEditing" class="quiet" type="button">Keep editing</button>
+        </div>
       </section>
     </main>
     <section id="advancedView" hidden aria-label="Advanced recording workspace">
@@ -443,8 +459,8 @@ A fresh example, prepared for review.</textarea
     <div id="toast" role="status" aria-live="polite"></div>
     <script src="/app.js?v=20261017f"></script>
     <script src="/simple.js?v=20261017f"></script>
-    <script src="/training.js?v=20261018j"></script>
-    <script src="/directed.js?v=20261018j"></script>
+    <script src="/training.js?v=20261018k"></script>
+    <script src="/directed.js?v=20261018k"></script>
     <script src="/briefs.js?v=20261017f"></script>
   </body>
 </html>

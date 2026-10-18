@@ -163,6 +163,7 @@ def test_imported_recording_waiting_review_saved_restore_and_approval_never_runs
             page.get_by_role("button", name="Saved tasks", exact=True).click()
             expect(page.locator("#savedList .saved-task")).to_have_count(1)
             page.locator("#savedList .saved-task").click()
+            page.locator("#savedUpdateRecording").click()
             expect(page.locator("#directedView")).to_be_visible()
             expect(page.locator("#trainingDescriptionStage")).to_be_visible()
             expect(page.locator("#trainingDescriptionText")).to_contain_text("Save a request")
@@ -335,6 +336,7 @@ def test_correction_marks_interpretation_stale_pending_revision_and_retains_note
             page.get_by_role("button", name="Saved tasks", exact=True).click()
             expect(page.locator("#savedList .saved-task")).to_have_count(1)
             page.locator("#savedList .saved-task").click()
+            page.locator("#savedUpdateRecording").click()
             expect(page.locator("#trainingRecordContinue")).to_be_visible()
             page.locator("#trainingRecordContinue").click()
             expect(page.locator("#directedRecordStage")).to_be_visible()
@@ -389,7 +391,7 @@ def test_easy_recording_saves_directly_to_library_without_execution(server, one_
             expect(page.locator("#savedList")).not_to_contain_text("Quick Workflows")
             expect(page.locator("#savedList")).not_to_contain_text("No tasks saved for this app.")
             saved = page.locator("#savedList button").filter(has_text="Save a customer order")
-            expect(saved).to_contain_text("needs review or testing")
+            expect(saved).to_contain_text("needs review")
             expect(page.locator("#savedStatus")).to_contain_text("Choose a task")
             if evidence_dir:
                 page.screenshot(path=str(evidence_dir / "easy-saved-tasks-390.png"), full_page=True)
@@ -399,8 +401,9 @@ def test_easy_recording_saves_directly_to_library_without_execution(server, one_
             assert page.locator("#hmbCliCopyBtn").count() == 0
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
             saved.click()
-            expect(page.locator("#trainingDescriptionText")).to_contain_text("Save a customer order")
-            expect(page.locator("#trainingEdit")).to_be_visible()
+            expect(page.locator("#savedTaskName")).to_have_value("Save a customer order")
+            expect(page.locator("#savedTaskVideo")).to_be_visible()
+            expect(page.locator("#savedTaskSave")).to_be_visible()
             assert not errors
         finally:
             browser.close()
@@ -473,5 +476,110 @@ def test_cancelled_capture_does_not_open_review_or_invent_a_recording(server):
             expect(page.locator("#oneClickStatus")).to_contain_text("Recording wasn’t started")
             expect(page.locator("#mcModalOverlay")).to_be_hidden()
             assert httpx.get(base + "/api/sessions").json()["sessions"] == []
+        finally:
+            browser.close()
+
+
+def test_naming_existing_app_tasks_and_typo_recovery(server, one_second_video):
+    base, _ = server
+    def app_with_tasks(name, titles):
+        app = httpx.post(base + "/api/training/apps", json={"name": name}).json()
+        tasks = []
+        for title in titles:
+            response = httpx.post(base + f"/api/training/apps/{app['id']}/tasks", json={"name": title})
+            response.raise_for_status()
+            tasks.append(response.json())
+        return app, tasks
+
+    _, order_tasks = app_with_tasks("Orders", ["Save an order", "Send a receipt"])
+    app_with_tasks("Images", ["Resize an image"])
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page(viewport={"width": 390, "height": 844})
+            errors = []
+            page.on("pageerror", lambda err: errors.append(str(err)))
+            page.goto(base)
+            page.locator("#oneClickImportInput").set_input_files(str(one_second_video))
+            recorded_media = httpx.get(base + page.locator("#mcModalBody video").get_attribute("src")).content
+            page.locator("#hmbAppSelect").select_option(label="Orders")
+            expect(page.locator("#hmbAppInput")).to_have_value("Orders")
+            expect(page.locator("#hmbTaskSelect")).to_contain_text("Save an order")
+            expect(page.locator("#hmbTaskSelect")).to_contain_text("Send a receipt")
+            expect(page.locator("#hmbTaskSelect")).not_to_contain_text("Resize an image")
+            page.locator("#hmbTaskSelect").select_option(label="Save an order")
+            expect(page.locator("#hmbTaskInput")).to_have_value("Save an order")
+
+            # A typo must not strand the user in a filtered suggestion list.
+            page.locator("#hmbAppInput").fill("Ordres")
+            page.locator("#hmbAppSelect").select_option(label="Orders")
+            expect(page.locator("#hmbAppInput")).to_have_value("Orders")
+            page.locator("#hmbTaskSelect").select_option(label="Save an order")
+            page.locator("#hmbAppSelect").select_option(label="Images")
+            expect(page.locator("#hmbTaskSelect")).to_contain_text("Resize an image")
+            expect(page.locator("#hmbTaskSelect")).not_to_contain_text("Save an order")
+            expect(page.locator("#hmbTaskInput")).to_have_value("")
+            expect(page.locator("#hmbNameNext")).to_be_disabled()
+            page.locator("#hmbAppSelect").select_option(label="Orders")
+            page.locator("#hmbTaskSelect").select_option(label="Save an order")
+            page.locator("#hmbTaskSelect").select_option("")
+            expect(page.locator("#hmbTaskInput")).to_have_value("")
+            expect(page.locator("#hmbNameNext")).to_be_disabled()
+            page.locator("#hmbTaskInput").fill("Send a receipt")
+            expect(page.locator(".hmb-task-version-hint")).to_contain_text("new recording version")
+            page.locator("#hmbAppSelect").select_option("")
+            expect(page.locator("#hmbAppInput")).to_have_value("")
+            expect(page.locator("#hmbTaskInput")).to_have_value("")
+            page.locator("#hmbAppSelect").select_option(label="Orders")
+            page.locator("#hmbTaskSelect").select_option(label="Save an order")
+            assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+            evidence = os.environ.get("HMB_BROWSER_EVIDENCE")
+            if evidence:
+                Path(evidence).mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(Path(evidence) / "naming-existing-task-390.png"), full_page=True)
+            page.locator("#hmbNameNext").click()
+            expect(page.locator("#mcModalOverlay")).to_be_hidden()
+            target = httpx.get(base + f"/api/training/tasks/{order_tasks[0]['id']}").json()
+            assert target["latest_version"] == 2
+            assert httpx.get(base + f"/api/sessions/{target['session']['id']}/media").content == recorded_media
+            retained_apps = httpx.get(base + "/api/training/apps").json()["apps"]
+            assert len(next(app for app in retained_apps if app["name"] == "Orders")["tasks"]) == 2
+            assert not errors
+        finally:
+            browser.close()
+
+
+def test_naming_app_load_retry_preserves_typed_names(server, one_second_video):
+    base, _ = server
+    response = httpx.post(base + "/api/training/apps", json={"name": "Orders"})
+    response.raise_for_status()
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.goto(base)
+            calls = []
+            def apps_response(route):
+                calls.append(True)
+                if len(calls) == 1:
+                    route.fulfill(status=503, json={"detail": "Temporarily unavailable"})
+                else:
+                    route.continue_()
+            page.route("**/api/training/apps", apps_response)
+            page.locator("#oneClickImportInput").set_input_files(str(one_second_video))
+            expect(page.locator("#hmbAppRetry")).to_be_visible()
+            page.locator("#hmbAppInput").fill("New editor")
+            page.locator("#hmbTaskInput").fill("Export a PDF")
+            page.locator("#hmbAppRetry").click()
+            expect(page.locator("#hmbAppSelect")).to_contain_text("Orders")
+            expect(page.locator("#hmbAppInput")).to_have_value("New editor")
+            expect(page.locator("#hmbTaskInput")).to_have_value("Export a PDF")
+            expect(page.locator("#hmbNameNext")).to_be_enabled()
+            page.locator("#hmbAppSelect").select_option(label="Orders")
+            expect(page.locator("#hmbTaskInput")).to_have_value("")
+            expect(page.locator("#hmbTaskSelect")).to_be_disabled()
+            page.locator("#hmbTaskInput").fill("Save an order")
+            page.locator("#hmbNameNext").click()
+            expect(page.locator("#mcModalOverlay")).to_be_hidden()
         finally:
             browser.close()

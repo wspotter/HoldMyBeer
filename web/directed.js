@@ -569,53 +569,48 @@
 
       const fields = add("div", "", grid, "hmb-fields");
 
-      // App Name combobox
-      const appLabel = add("label", "App", fields);
-      appLabel.htmlFor = "hmbAppInput";
+      // Existing app and task choices use native selects; text inputs remain
+      // available for new names and reset their related selection when edited.
+      const appLabel = add("label", "Choose an existing app", fields);
+      appLabel.htmlFor = "hmbAppSelect";
+      const appSelect = document.createElement("select");
+      appSelect.id = "hmbAppSelect";
+      appSelect.disabled = true;
+      const appPlaceholder = document.createElement("option");
+      appPlaceholder.value = "";
+      appPlaceholder.textContent = "Choose an app…";
+      appSelect.append(appPlaceholder);
+      fields.append(appSelect);
+
+      const appNameLabel = add("label", "Or type a new app name", fields);
+      appNameLabel.htmlFor = "hmbAppInput";
       const appInput = document.createElement("input");
       appInput.id = "hmbAppInput";
-      appInput.setAttribute("list", "hmbAppList");
       appInput.maxLength = 100;
       appInput.value = state.app || "";
       appInput.placeholder = "Choose an app, or type a new one…";
       appInput.autocomplete = "off";
       fields.append(appInput);
 
-      const datalist = add("datalist", "", fields);
-      datalist.id = "hmbAppList";
-      add("small", "Enter the name of your app", fields, "hmb-field-hint");
+      add("small", "Choose a saved app or type a new one.", fields, "hmb-field-hint");
+      const appStatus = add("small", "Loading saved apps…", fields, "hmb-field-hint");
+      appStatus.id = "hmbAppStatus";
+      appStatus.setAttribute("role", "status");
+      const appRetry = add("button", "Retry", fields, "hmb-secondary-btn");
+      appRetry.id = "hmbAppRetry";
+      appRetry.type = "button";
+      appRetry.hidden = true;
 
-      let appOptions = Array.from(new Set([
-        ...(reviewData.app_options || []),
-        ...(reviewData.detected_app ? [reviewData.detected_app] : []),
-      ])).filter(Boolean);
-
-      function populateAppDropdown(options) {
-        datalist.replaceChildren();
-        for (const opt of options) {
-          const dOpt = document.createElement("option");
-          dOpt.value = opt;
-          datalist.append(dOpt);
-        }
-      }
-      populateAppDropdown(appOptions);
-
-      request("/api/training/apps").then(res => {
-        if (res?.apps) {
-          let updated = false;
-          for (const a of res.apps) {
-            if (a.name && !appOptions.includes(a.name)) {
-              appOptions.push(a.name);
-              updated = true;
-            }
-          }
-          if (updated) populateAppDropdown(appOptions);
-        }
-      }).catch(() => {});
-
-      appInput.onclick = () => {
-        try { appInput.showPicker?.(); } catch {}
-      };
+      const taskChoiceLabel = add("label", "Choose a saved task", fields);
+      taskChoiceLabel.htmlFor = "hmbTaskSelect";
+      const taskSelect = document.createElement("select");
+      taskSelect.id = "hmbTaskSelect";
+      taskSelect.disabled = true;
+      const taskPlaceholder = document.createElement("option");
+      taskPlaceholder.value = "";
+      taskPlaceholder.textContent = "Choose a task…";
+      taskSelect.append(taskPlaceholder);
+      fields.append(taskSelect);
 
       // Task Name
       const taskLabel = add("label", "Task title", fields);
@@ -626,7 +621,101 @@
       taskInput.value = state.task || "";
       taskInput.placeholder = "e.g. Resize image to 1080px, Organize files…";
       fields.append(taskInput);
-      add("small", "Use a short title you’ll recognize later. You’ll review the steps with your assistant.", fields, "hmb-field-hint");
+      const taskHint = add("small", "Choose an app, then enter a short title you’ll recognize later. You can review the steps with your assistant.", fields, "hmb-field-hint hmb-task-version-hint");
+
+      let appRecords = [];
+      let activeApp = null;
+
+      function renderTaskOptions(app) {
+        taskSelect.replaceChildren();
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Choose a task…";
+        taskSelect.append(placeholder);
+        for (const task of app?.tasks || []) {
+          const option = document.createElement("option");
+          option.value = String(task.id);
+          option.textContent = task.name;
+          taskSelect.append(option);
+        }
+        taskSelect.disabled = !(app?.tasks?.length);
+        taskHint.textContent = app?.tasks?.length
+          ? "Choose a saved task to create its next recording version, or type a short new title you’ll recognize later. You can review the steps with your assistant."
+          : app
+            ? "This app has no saved tasks yet. Enter a short title you’ll recognize later; you can review the steps with your assistant."
+            : "Choose an app first, then select a task or enter a short title you’ll recognize later.";
+      }
+
+      function selectApp(app, clearTask = true, clearAppName = false) {
+        activeApp = app || null;
+        appSelect.value = app ? String(app.id) : "";
+        if (app) appInput.value = app.name;
+        else if (clearAppName) appInput.value = "";
+        renderTaskOptions(activeApp);
+        if (clearTask) {
+          taskSelect.value = "";
+          taskInput.value = "";
+        }
+      }
+
+      function populateExistingApps(records) {
+        const typedApp = appInput.value;
+        const typedTask = taskInput.value;
+        appRecords = records.filter(app => app?.id && app?.name);
+        appSelect.replaceChildren(appPlaceholder);
+        for (const app of appRecords) {
+          const option = document.createElement("option");
+          option.value = String(app.id);
+          option.textContent = app.name;
+          appSelect.append(option);
+        }
+        appSelect.disabled = !appRecords.length;
+        const matchingApp = appRecords.find(app => app.name.trim().toLocaleLowerCase() === typedApp.trim().toLocaleLowerCase());
+        if (matchingApp) {
+          selectApp(matchingApp, false);
+          taskInput.value = typedTask;
+          syncTaskChoice();
+          appStatus.textContent = "Saved apps loaded.";
+        } else {
+          appInput.value = typedApp;
+          appStatus.textContent = appRecords.length ? "Saved apps loaded." : "No saved apps yet. You can type a new app name.";
+        }
+      }
+
+      function syncTaskChoice() {
+        const typedTask = taskInput.value.trim().toLocaleLowerCase();
+        const match = activeApp?.tasks?.find(task => String(task.name).trim().toLocaleLowerCase() === typedTask);
+        taskSelect.value = match ? String(match.id) : "";
+        taskHint.textContent = match
+          ? `Saving will add a new recording version to “${match.name}”.`
+          : activeApp?.tasks?.length
+            ? "Choose a saved task to create its next recording version, or type a short new title you’ll recognize later. You can review the steps with your assistant."
+            : activeApp
+              ? "This app has no saved tasks yet. Enter a short title you’ll recognize later; you can review the steps with your assistant."
+              : "Choose an app first, then select a task or enter a short title you’ll recognize later.";
+      }
+
+      appSelect.onchange = () => {
+        const app = appRecords.find(item => String(item.id) === appSelect.value);
+        selectApp(app, true, !app);
+        validate();
+      };
+      appInput.oninput = () => {
+        const typedApp = appInput.value.trim().toLocaleLowerCase();
+        const matchingApp = appRecords.find(app => app.name.trim().toLocaleLowerCase() === typedApp);
+        if (matchingApp && String(matchingApp.id) !== appSelect.value) {
+          selectApp(matchingApp);
+        } else if (!matchingApp && activeApp) {
+          selectApp(null, true, false);
+        }
+        validate();
+      };
+      taskSelect.onchange = () => {
+        const task = activeApp?.tasks?.find(item => String(item.id) === taskSelect.value);
+        taskInput.value = task?.name || "";
+        syncTaskChoice();
+        validate();
+      };
 
       if (currentMode === "admin") {
         const adminBox = add("div", "", fields, "hmb-admin-section");
@@ -653,8 +742,26 @@
         next.disabled = !state.app || !state.task;
       }
 
-      appInput.oninput = validate;
-      taskInput.oninput = validate;
+      taskInput.oninput = () => {
+        syncTaskChoice();
+        validate();
+      };
+      appRetry.onclick = loadExistingApps;
+      async function loadExistingApps() {
+        appRetry.disabled = true;
+        appStatus.textContent = "Loading saved apps…";
+        try {
+          const res = await request("/api/training/apps");
+          populateExistingApps(res?.apps || []);
+          appRetry.hidden = true;
+        } catch (_) {
+          appStatus.textContent = "Saved apps could not load. Retry, or type a new app name.";
+          appRetry.hidden = false;
+        } finally {
+          appRetry.disabled = false;
+          validate();
+        }
+      }
       for (const inp of [appInput, taskInput]) {
         inp.onkeydown = e => { if (e.key === "Enter" && !next.disabled) next.click(); };
       }
@@ -681,7 +788,8 @@
         }
       };
 
-      (appInput.value ? taskInput : appInput).focus();
+      loadExistingApps();
+      (appInput.value ? taskInput : appSelect).focus();
     }
 
     // ---------- Step 2: Smart Tuning / Activation ----------

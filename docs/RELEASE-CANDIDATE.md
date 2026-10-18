@@ -1,4 +1,4 @@
-# 0.4.0a2: recording workspace preview
+# 0.4.0a3: recording workspace preview
 
 This preview simplifies the recording workspace and corrects execution-status reporting. The dated `0.3.0a3` receipts below describe an earlier checkout. They do not establish acceptance of this version. No production deployment is included.
 
@@ -6,13 +6,15 @@ The novice path is: record in the browser or import a video, name the app and ta
 
 The separate hybrid file runner supports deterministic rename, organize-by-extension, and CSV-summary recipes with real sample checks and sandbox previews. Generic GUI, browser, and terminal steps require agent assistance and do not yield success receipts. The fixed browser fixture trial remains a separate Advanced capability.
 
+Saved tasks now provides an app/task sidebar and selected recording/settings panel. Saving task settings creates a new version; viewing does not. Archive removes a task from active choices while preserving its recordings and history; Show archived and Restore task bring it back. The naming form offers existing app/task pickers and supports recovering from typos and failed loading.
+
 ## Install and use
 
 Obtain the reviewed wheel and its SHA-256 from the retained release checkpoint. Install in a dedicated Python 3.10+ virtual environment:
 
 ```sh
 python3 -m venv /absolute/path/to/hmb-env
-/absolute/path/to/hmb-env/bin/python -m pip install /absolute/path/to/holdmybeer-0.4.0a2-py3-none-any.whl
+/absolute/path/to/hmb-env/bin/python -m pip install /absolute/path/to/holdmybeer-0.4.0a3-py3-none-any.whl
 /absolute/path/to/hmb-env/bin/python -m playwright install chromium
 /absolute/path/to/hmb-env/bin/holdmybeer doctor
 /absolute/path/to/hmb-env/bin/holdmybeer --data-dir /absolute/private/path/to/hmb-data

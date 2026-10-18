@@ -207,9 +207,11 @@ class Store:
                        (data['id'], procedure['revision'], json.dumps(procedure), _now(), 'saved'))
 
     def update_session(self, ident: str, patch: dict):
-        from .training import is_mutable_training_session
+        from .training import is_archived_training_session, is_mutable_training_session
         with self.lock, self.connect() as db:
             if not is_mutable_training_session(self, ident):
+                if is_archived_training_session(self, ident):
+                    raise HTTPException(409, 'This task is archived. Restore it before editing this recording.')
                 raise HTTPException(409, 'This training version is retained. Use Edit task to create a new draft.')
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT data FROM sessions WHERE id=?', (ident,)).fetchone()
@@ -388,8 +390,10 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                 os.fsync(out.fileno())
             if total == 0: raise HTTPException(422, "empty media")
             with app.state.store.lock:
-                from .training import is_mutable_training_session
+                from .training import is_archived_training_session, is_mutable_training_session
                 if not is_mutable_training_session(app.state.store, session_id):
+                    if is_archived_training_session(app.state.store, session_id):
+                        raise HTTPException(409, 'This task is archived. Restore it before adding a recording.')
                     raise HTTPException(409, 'This training version is retained. Use Edit task to create a new draft.')
                 fresh = app.state.store.get_session(session_id)
                 patch = {'media_url': f'/api/sessions/{session_id}/media', 'media_revision': str(uuid.uuid4())}
@@ -606,7 +610,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                     (sid, 1, json.dumps(session_data["procedure"]), now, "saved"),
                 )
                 db.execute(
-                    "INSERT INTO training_tasks VALUES(?,?,?,?,?,?)",
+                    "INSERT INTO training_tasks(id,app_id,name,latest_version,working_version,created_at) VALUES(?,?,?,?,?,?)",
                     (tid, aid, final_task_name, 1, None, now),
                 )
                 db.execute(
@@ -658,6 +662,8 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             with app.state.store.connect() as db:
                 task_row = db.execute("SELECT * FROM training_tasks WHERE id=?", (str(task_id),)).fetchone()
                 if task_row is not None:
+                    if task_row["archived_at"] is not None:
+                        raise HTTPException(409, "task is archived; restore it before renaming")
                     duplicate = db.execute(
                         "SELECT 1 FROM training_tasks WHERE app_id=? AND name=? COLLATE NOCASE AND id<>?",
                         (task_row["app_id"], new_name, str(task_id)),

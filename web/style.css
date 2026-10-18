@@ -880,6 +880,44 @@ summary:focus-visible {
 .receipt-fields dt { color: var(--muted); }
 .receipt-fields dd { margin: 0; overflow-wrap: anywhere; font-weight: 600; }
 .saved-list { display: grid; gap: 8px; }
+.saved-archived-toggle { display: inline-flex; align-items: center; gap: 8px; margin: 8px 0 16px; color: var(--muted); font-size: 13px; }
+.saved-archived-toggle input { accent-color: var(--accent); }
+.saved-workspace { display: grid; grid-template-columns: minmax(210px, 280px) minmax(0, 1fr); gap: 20px; min-height: 420px; align-items: start; }
+#simpleApp:has(#savedView:not([hidden])) { max-width: 1200px; }
+#savedView { max-width: none; }
+.saved-sidebar, .saved-editor { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.saved-sidebar { padding: 10px; }
+.saved-tree { display: grid; gap: 4px; }
+.saved-app-group { border-radius: 8px; }
+.saved-app-group > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; font-weight: 650; cursor: pointer; }
+.saved-app-group > summary::before { content: "›"; display: inline-block; flex: 0 0 12px; color: var(--muted); font-size: 19px; line-height: 1; transition: transform .12s ease; }
+.saved-app-group[open] > summary::before { transform: rotate(90deg); }
+.saved-app-group > summary small { color: var(--muted); font-weight: 450; }
+.saved-app-tasks { display: grid; gap: 3px; padding: 0 0 6px 10px; }
+.saved-app-tasks .saved-task { display: grid; gap: 2px; width: 100%; padding: 9px 10px; border: 0; border-radius: 7px; background: transparent; text-align: left; }
+.saved-app-tasks .saved-task:hover, .saved-app-tasks .saved-task[aria-current="page"] { background: #f0edff; color: #342366; }
+.saved-app-tasks .saved-task[aria-current="page"] { box-shadow: inset 3px 0 var(--accent); }
+.saved-app-tasks .saved-task small { color: var(--muted); font-weight: 400; }
+.saved-tree-empty, .saved-editor-empty { color: var(--muted); line-height: 1.5; }
+.saved-editor { padding: clamp(16px, 3vw, 28px); }
+.saved-editor-empty { min-height: 240px; display: grid; place-content: center; text-align: center; }
+.saved-editor-empty strong { color: var(--ink); font-size: 18px; }
+.saved-editor-head { margin-bottom: 16px; }
+.saved-editor-head .eyebrow { margin: 0 0 6px; }
+.saved-editor-head h2 { margin: 0 0 6px; overflow-wrap: anywhere; }
+#savedTaskVideo { display: block; width: 100%; max-height: 240px; aspect-ratio: 16 / 9; object-fit: contain; margin: 0 0 20px; background: #171923; border-radius: 8px; }
+.saved-task-form { display: grid; gap: 8px; }
+.saved-task-form label { margin-top: 8px; font-size: 13px; font-weight: 600; }
+.saved-task-form input, .saved-task-form textarea { width: 100%; min-width: 0; }
+.saved-task-form textarea { min-height: 78px; resize: vertical; }
+.saved-editor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.saved-editor-actions label { margin: 0; font-size: 13px; font-weight: 600; }
+.saved-editor-actions select { min-width: 130px; }
+.saved-legacy-list { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }
+.saved-legacy-list:empty { display: none; }
+.saved-dirty-prompt { position: sticky; bottom: 12px; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 16px; margin-top: 12px; border: 1px solid #f1c9b5; border-radius: 10px; background: #fff6f0; box-shadow: 0 8px 24px #17203318; }
+.saved-dirty-prompt[hidden] { display: none; }
+.saved-dirty-prompt span { margin-right: auto; }
 .saved-task { display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--line); background: var(--surface); padding: 16px; text-align: left; border-radius: 10px; }
 .saved-task strong { overflow-wrap: anywhere; }
 .saved-task span { font-size: 12px; color: var(--muted); }
@@ -926,6 +964,12 @@ h1:focus, h2:focus { outline: none; }
   .simple-view h1 { font-size: 32px; }
   .task-link { padding: 16px 12px; }
   .saved-task { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .saved-workspace { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .saved-sidebar { padding: 8px; }
+  .saved-tree { max-height: 34vh; overflow-y: auto; }
+  .saved-editor { padding: 16px; }
+  .saved-editor-actions { align-items: stretch; }
+  .saved-editor-actions > * { max-width: 100%; }
 }
 
 /* 1-Button Record -> 1-Button Stop -> Auto AI Multiple-Choice Review */

@@ -1,31 +1,65 @@
 (() => {
   const $ = id => document.getElementById(id);
-  let current = null, trainingTask = null, recorder = null, mediaStream = null, chunks = [], recording = false, completeMedia = false, busy = false, failedBlob = null, sizeTotal = 0, readOnly = false, historicalView = false, failedCapture = false;
-  const say = message => { $("directedStatus").textContent = message; };
+  let current = null, trainingTask = null, recorder = null, mediaStream = null,
+      chunks = [], recording = false, completeMedia = false, busy = false,
+      failedBlob = null, sizeTotal = 0, readOnly = false, historicalView = false, failedCapture = false;
+
+  const say = msg => { $("directedStatus").textContent = msg; };
+
   async function request(path, options = {}) {
-    const response = await fetch(path, { ...options, headers: { ...(options.body instanceof Blob ? {} : {"Content-Type":"application/json"}), ...options.headers } });
+    const isBlob = options.body instanceof Blob;
+    const response = await fetch(path, {
+      ...options,
+      headers: { ...(isBlob ? {} : {"Content-Type": "application/json"}), ...options.headers },
+    });
     if (!response.ok) {
       if (response.status >= 500) throw new Error("The local workspace returned an error. Check its local server log and retry.");
-      const raw = await response.text(); let data;
-      try { data = JSON.parse(raw); } catch { data = {detail:raw}; }
+      const raw = await response.text();
+      let data;
+      try { data = JSON.parse(raw); } catch { data = { detail: raw }; }
       throw new Error(typeof data.detail === "string" ? data.detail : `Request failed (${response.status})`);
     }
     return response.json();
   }
-  function refreshReady() { $("directedReview").disabled = (readOnly ? !current?.media_url : (!$("directedGoal").value.trim() || !$("directedDone").value.trim() || !completeMedia || !$("directedComplete").checked)) || recording || busy; syncControls(); }
-  function stopTracks() { mediaStream?.getTracks().forEach(track => track.stop()); mediaStream = null; }
+
+  function add(tag, value, parent, className) {
+    const el = document.createElement(tag);
+    if (value) el.textContent = value;
+    if (className) el.className = className;
+    if (parent) parent.append(el);
+    return el;
+  }
+
+  function refreshReady() {
+    $("directedReview").disabled = (readOnly ? !current?.media_url : (!$("directedGoal").value.trim() || !$("directedDone").value.trim() || !completeMedia || !$("directedComplete").checked)) || recording || busy;
+    syncControls();
+  }
+
+  function stopTracks() {
+    mediaStream?.getTracks().forEach(track => track.stop());
+    mediaStream = null;
+  }
+
   function waitForPlayable(video) {
     return new Promise((resolve, reject) => {
-      const finish = error => { clearTimeout(timeout); video.onloadeddata = null; video.onerror = null; error ? reject(error) : resolve(); };
+      const finish = error => {
+        clearTimeout(timeout);
+        video.onloadeddata = null;
+        video.onerror = null;
+        error ? reject(error) : resolve();
+      };
       const timeout = setTimeout(() => finish(new Error("The video did not become playable.")), 10000);
       video.onloadeddata = () => finish();
       video.onerror = () => finish(new Error("The video could not be played."));
       video.load();
     });
   }
+
   function syncControls() {
     const locked = busy || recording;
-    for (const id of ["directedEditDetails", "directedRecord", "directedReview"]) $(id).disabled = locked || (readOnly && id === "directedRecord") || (id === "directedReview" && (readOnly ? !current?.media_url : (!completeMedia || !$("directedComplete").checked)));
+    for (const id of ["directedEditDetails", "directedRecord", "directedReview"]) {
+      $(id).disabled = locked || (readOnly && id === "directedRecord") || (id === "directedReview" && (readOnly ? !current?.media_url : (!completeMedia || !$("directedComplete").checked)));
+    }
     $("directedImport").disabled = locked || readOnly;
     $("directedComplete").disabled = locked || readOnly || !completeMedia;
     $("directedReview").textContent = readOnly ? "View saved understanding" : "Review what it learned";
@@ -35,6 +69,7 @@
     $("directedReplacementNote").hidden = !replacing || readOnly;
     window.hmbDirectedIsBusy = () => busy || recording;
   }
+
   function showStage(which) {
     $("directedDescribeStage").hidden = which !== "describe";
     $("directedRecordStage").hidden = which !== "record";
@@ -47,24 +82,27 @@
       $("directedVersionSummary").textContent = `${label} version ${version}. ${readOnly ? "Read-only. Return to current task details to edit or create a new training version." : "Recording is saved only to this version."}`;
     }
   }
-  function detailsChanged() {
+
+  function resetRecordingInputs() {
+    $("directedGoal").value = "";
+    $("directedDone").value = "";
     $("directedComplete").checked = false;
-    $("directedReviewPanel").hidden = true;
-    refreshReady();
+    $("directedVideo").removeAttribute("src");
+    $("directedVideo").hidden = true;
   }
+
   async function ensureSession() {
     const goal = $("directedGoal").value.trim(), done = $("directedDone").value.trim();
-    // A name-only task (no pre-record goal/done) can still record; goal/done are inferred
-    // later from the recording, so recording entry must not require them here.
     if (!current?.id) throw new Error("Choose an app and save a task before recording.");
     current = await request(`/api/sessions/${current.id}`);
     const name = trainingTask?.name || current.answers?.teaching_task_name || "Task";
     if ((current.answers?.teaching_task_name || "Task") === name && current.answers?.teaching_goal === goal && current.answers?.teaching_done === done) return current;
     if (readOnly) throw new Error("This tested version is read-only. Edit the task to create a new training version first.");
-    const answers = {...(current.answers || {}), teaching_task_name:name, teaching_goal:goal, teaching_done:done};
-    current = await request(`/api/sessions/${current.id}`, {method:"PUT", body:JSON.stringify({title:`Training · ${answers.teaching_task_name}`, answers})});
+    const answers = {...(current.answers || {}), teaching_task_name: name, teaching_goal: goal, teaching_done: done};
+    current = await request(`/api/sessions/${current.id}`, {method: "PUT", body: JSON.stringify({title: `Training · ${answers.teaching_task_name}`, answers})});
     return current;
   }
+
   async function retain(blob) {
     busy = true; refreshReady();
     try {
@@ -72,7 +110,7 @@
       if (blob.size > 100 * 1024 * 1024) throw new Error("Video exceeds the 100 MB preview limit.");
       failedBlob = blob;
       const task = await ensureSession();
-      const result = await request(`/api/sessions/${task.id}/media`, {method:"POST", headers:{"Content-Type":blob.type || "video/webm"}, body:blob});
+      const result = await request(`/api/sessions/${task.id}/media`, {method: "POST", headers: {"Content-Type": blob.type || "video/webm"}, body: blob});
       current.media_url = result.url;
       const video = $("directedVideo");
       video.src = `${result.url}?t=${Date.now()}`;
@@ -90,44 +128,74 @@
       say(`Could not save the recording. ${error.message}`);
     } finally { busy = false; refreshReady(); }
   }
+
   $("directedRetryUpload").onclick = () => { if (failedBlob && !busy) retain(failedBlob); };
+
   $("directedRecord").onclick = async () => {
     if (busy || recording) return;
     busy = true; refreshReady();
     try {
       if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder) throw new Error("Screen recording is unavailable here. Import a video instead.");
-      mediaStream = await navigator.mediaDevices.getDisplayMedia({video:true, audio:false});
+      mediaStream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: false});
       mediaStream.getVideoTracks().forEach(track => { track.onended = () => { if (recorder?.state === "recording") recorder.stop(); }; });
       chunks = []; sizeTotal = 0;
       const mime = ["video/webm;codecs=vp9", "video/webm"].find(type => MediaRecorder.isTypeSupported(type));
-      recorder = new MediaRecorder(mediaStream, mime ? {mimeType:mime} : {});
+      recorder = new MediaRecorder(mediaStream, mime ? {mimeType: mime} : {});
       failedCapture = false;
       recorder.ondataavailable = event => {
         if (!event.data.size) return;
         sizeTotal += event.data.size;
-        if (sizeTotal > 100 * 1024 * 1024) { failedCapture = true; chunks = []; say("The video exceeded 100 MB and was discarded. Record a shorter example."); if (recorder.state === "recording") recorder.stop(); return; }
+        if (sizeTotal > 100 * 1024 * 1024) {
+          failedCapture = true; chunks = [];
+          say("The video exceeded 100 MB and was discarded. Record a shorter example.");
+          if (recorder.state === "recording") recorder.stop();
+          return;
+        }
         chunks.push(event.data);
       };
-      recorder.onerror = () => { failedCapture = true; stopTracks(); recording = false; $("directedRecord").hidden = false; $("directedStop").hidden = true; say("Recording failed. The partial video will be discarded; try again or import a video."); refreshReady(); };
+      recorder.onerror = () => {
+        failedCapture = true; stopTracks(); recording = false;
+        $("directedRecord").hidden = false; $("directedStop").hidden = true;
+        say("Recording failed. The partial video will be discarded; try again or import a video.");
+        refreshReady();
+      };
       recorder.onstop = async () => {
         recording = false; $("directedRecord").hidden = false; $("directedStop").hidden = true;
         stopTracks();
         if (failedCapture) { chunks = []; refreshReady(); return; }
-        await retain(new Blob(chunks, {type:recorder.mimeType || "video/webm"}));
+        await retain(new Blob(chunks, {type: recorder.mimeType || "video/webm"}));
       };
-      recorder.start(1000); recording = true; busy = false; $("directedRecord").hidden = true; $("directedStop").hidden = false;
-      say("Recording. Perform the whole task, then choose Done showing."); refreshReady();
-    } catch (error) { busy = false; stopTracks(); say(`Screen recording did not start. ${error.message}`); refreshReady(); }
+      recorder.start(1000); recording = true; busy = false;
+      $("directedRecord").hidden = true; $("directedStop").hidden = false;
+      say("Recording. Perform the whole task, then choose Done showing.");
+      refreshReady();
+    } catch (error) {
+      busy = false; stopTracks();
+      say(`Screen recording did not start. ${error.message}`);
+      refreshReady();
+    }
   };
+
   $("directedStop").onclick = () => { if (recorder?.state === "recording") recorder.stop(); };
-  $("directedImport").onchange = async event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) await retain(file); };
+
+  $("directedImport").onchange = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) await retain(file);
+  };
+
   document.addEventListener("click", event => {
     if (!recording && !busy) return;
     if (event.target.closest("#directedStop")) return;
-    if (event.target.closest("[data-view], .brand, #trainingBackToApps, #trainingBackToTasks, #trainingRecordContinue, #directedEditDetails") && !event.target.closest("#directedStop")) { event.preventDefault(); event.stopImmediatePropagation(); say("Stop and save this recording before leaving the task."); }
+    if (event.target.closest("[data-view], .brand, #trainingBackToApps, #trainingBackToTasks, #trainingRecordContinue, #directedEditDetails")) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      say("Stop and save this recording before leaving the task.");
+    }
   }, true);
+
   window.addEventListener("beforeunload", event => { if (recording || busy) { event.preventDefault(); event.returnValue = ""; } });
   $("directedComplete").onchange = refreshReady;
+
   $("directedReview").onclick = async () => {
     if (readOnly) {
       if (!current?.id || busy) return;
@@ -141,27 +209,33 @@
     busy = true; refreshReady(); say("Saving your task details and requesting the review…");
     try {
       let task = await ensureSession();
-      task = await request(`/api/sessions/${task.id}`, {method:"PUT", body:JSON.stringify({answers:{...(task.answers || {}), teaching_recording_confirmed:"yes"}})});
+      task = await request(`/api/sessions/${task.id}`, {method: "PUT", body: JSON.stringify({answers: {...(task.answers || {}), teaching_recording_confirmed: "yes"}})});
       current = task;
-      const panel = $("directedReviewPanel"); panel.replaceChildren(); panel.hidden = false;
-      const response = await request(`/api/sessions/${task.id}/teaching-review`);
-      renderReview(response);
-    } catch (error) { say(`Review is not available yet. Your recording and task details are saved. ${error.message}`); }
-    finally { busy = false; refreshReady(); }
+      const panel = $("directedReviewPanel");
+      panel.replaceChildren(); panel.hidden = false;
+      renderReview(await request(`/api/sessions/${task.id}/teaching-review`));
+    } catch (error) {
+      say(`Review is not available yet. Your recording and task details are saved. ${error.message}`);
+    } finally { busy = false; refreshReady(); }
   };
-  function add(tag, value, parent, className) { const element = document.createElement(tag); element.textContent = value; if (className) element.className = className; parent.append(element); return element; }
+
   function renderReview(data) {
-    const panel = $("directedReviewPanel"); panel.replaceChildren();
+    const panel = $("directedReviewPanel");
+    panel.replaceChildren();
     document.dispatchEvent(new CustomEvent("hmb-training-review"));
-    const back = add("button", "← Back to recording", panel, "back-link"); back.type = "button"; back.onclick = () => { if (!busy) { panel.hidden = true; document.dispatchEvent(new CustomEvent("hmb-training-record")); } };
+    const back = add("button", "← Back to recording", panel, "back-link");
+    back.type = "button";
+    back.onclick = () => { if (!busy) { panel.hidden = true; document.dispatchEvent(new CustomEvent("hmb-training-record")); } };
     const status = data.status;
     const title = add("h2", status === "ready" ? "Here’s what I understood" : status === "questions" ? "A few things need your input" : status === "stale" ? "This review is out of date" : status === "approved" ? "Understanding approved" : "Review not ready yet", panel);
     title.id = "directedReviewTitle"; title.tabIndex = -1;
+
     if (status === "stale" && current?.answers?.teaching_correction) {
       add("h3", "Saved correction", panel);
       add("p", current.answers.teaching_correction, panel);
       add("p", "This note is saved with the task but has not been sent to an assistant.", panel, "task-status");
     }
+
     if (data.proposal && status !== "stale") {
       const proposal = data.proposal;
       for (const observation of proposal.observations || []) add("p", `${Number(observation.timestamp || 0).toFixed(1)}s · ${observation.text}`, panel);
@@ -169,11 +243,16 @@
       if (proposal.procedure?.steps?.length) {
         add("h3", "Proposed steps", panel);
         const list = document.createElement("ol");
-        for (const step of proposal.procedure.steps) { const li = document.createElement("li"); li.textContent = `${step.goal || "Step"}${step.check ? ` — Check: ${step.check}` : ""}`; list.append(li); }
+        for (const step of proposal.procedure.steps) {
+          const li = document.createElement("li");
+          li.textContent = `${step.goal || "Step"}${step.check ? ` — Check: ${step.check}` : ""}`;
+          list.append(li);
+        }
         panel.append(list);
       }
     }
     add("p", "Approval records that this interpretation matches your example. It does not authorize running the task. No automatic replay is available here.", panel, "task-status");
+
     if (status === "waiting") {
       const taskName = trainingTask?.name || current?.answers?.teaching_task_name || "this task";
       add("p", `Your recording is saved. Assistant review is not connected automatically. Ask your connected assistant to review “${taskName}” in HoldMyBeer, then choose Refresh review here.`, panel, "task-status");
@@ -181,8 +260,7 @@
       autoBtn.type = "button";
       autoBtn.onclick = async () => {
         if (!current?.id || busy) return;
-        autoBtn.disabled = true;
-        autoBtn.textContent = "Analyzing recording…";
+        autoBtn.disabled = true; autoBtn.textContent = "Analyzing recording…";
         try {
           const reviewData = await request(`/api/sessions/${current.id}/auto-review`, {method: "POST", body: JSON.stringify({})});
           const mcContainer = document.createElement("div");
@@ -195,48 +273,73 @@
         }
       };
     }
-    if (["waiting", "stale", "questions", "ready"].includes(status)) { const refresh = add("button", "Refresh review", panel, "quiet"); refresh.type = "button"; refresh.onclick = async () => { if (busy) return; busy = true; refreshReady(); refresh.disabled = true; try { renderReview(await request(`/api/sessions/${current.id}/teaching-review`)); } catch (error) { say(error.message); } finally { busy = false; refreshReady(); } }; }
+
+    if (["waiting", "stale", "questions", "ready"].includes(status)) {
+      const refresh = add("button", "Refresh review", panel, "quiet");
+      refresh.type = "button";
+      refresh.onclick = async () => {
+        if (busy) return;
+        busy = true; refreshReady(); refresh.disabled = true;
+        try { renderReview(await request(`/api/sessions/${current.id}/teaching-review`)); }
+        catch (error) { say(error.message); }
+        finally { busy = false; refreshReady(); }
+      };
+    }
+
     if (["questions", "ready"].includes(status) && !readOnly) {
       if (status === "questions") add("p", "The interpretation has open questions. Review them and ask your assistant to submit an updated interpretation before approving.", panel, "task-status");
-      const correctionLabel = add("label", "What should be corrected in this interpretation?", panel); correctionLabel.htmlFor = "directedCorrection";
-      const correction = document.createElement("textarea"); correction.id = "directedCorrection"; correction.maxLength = 1000; panel.append(correction);
-      const saveCorrection = add("button", "Save correction", panel, "quiet"); saveCorrection.type = "button";
-      saveCorrection.disabled = true; correction.oninput = () => { saveCorrection.disabled = !correction.value.trim() || busy; };
+      const correctionLabel = add("label", "What should be corrected in this interpretation?", panel);
+      correctionLabel.htmlFor = "directedCorrection";
+      const correction = document.createElement("textarea");
+      correction.id = "directedCorrection"; correction.maxLength = 1000;
+      panel.append(correction);
+      const saveCorrection = add("button", "Save correction", panel, "quiet");
+      saveCorrection.type = "button"; saveCorrection.disabled = true;
+      correction.oninput = () => { saveCorrection.disabled = !correction.value.trim() || busy; };
       saveCorrection.onclick = async () => {
         if (busy) return;
         busy = true; refreshReady(); saveCorrection.disabled = true;
         try {
           const fresh = await request(`/api/sessions/${current.id}`);
-          current = await request(`/api/sessions/${fresh.id}`, {method:"PUT", body:JSON.stringify({answers:{...(fresh.answers || {}), teaching_correction:correction.value.trim()}})});
+          current = await request(`/api/sessions/${fresh.id}`, {method: "PUT", body: JSON.stringify({answers: {...(fresh.answers || {}), teaching_correction: correction.value.trim()}})});
           renderReview(await request(`/api/sessions/${current.id}/teaching-review`));
           add("p", "Correction saved in this task. It was not sent to an assistant; the prior review may now be stale.", panel, "task-status");
-        } catch (error) { say(`Could not save the correction. ${error.message}`); saveCorrection.disabled = false; }
-        finally { busy = false; refreshReady(); }
+        } catch (error) {
+          say(`Could not save the correction. ${error.message}`);
+          saveCorrection.disabled = false;
+        } finally { busy = false; refreshReady(); }
       };
     }
+
     if (status === "ready" && !readOnly) {
-      const approve = add("button", "Approve this understanding", panel, "primary"); approve.type = "button";
+      const approve = add("button", "Approve this understanding", panel, "primary");
+      approve.type = "button";
       approve.onclick = async () => {
         if (busy) return;
         busy = true; refreshReady(); approve.disabled = true;
         try {
-          renderReview(await request(`/api/sessions/${current.id}/teaching-review/approve`, {method:"POST", body:JSON.stringify({proposal_id:data.proposal.id, consent:true})}));
-        } catch (error) { say(`Could not approve the interpretation. ${error.message}`); approve.disabled = false; }
-        finally { busy = false; refreshReady(); }
+          renderReview(await request(`/api/sessions/${current.id}/teaching-review/approve`, {method: "POST", body: JSON.stringify({proposal_id: data.proposal.id, consent: true})}));
+        } catch (error) {
+          say(`Could not approve the interpretation. ${error.message}`);
+          approve.disabled = false;
+        } finally { busy = false; refreshReady(); }
       };
     }
+
     if (status === "approved") add("p", "Nothing has been executed.", panel);
     if (readOnly) add("p", "This tested version is read-only. You can view its saved understanding; edit the task to create a new training version.", panel, "task-status");
     title.focus();
     say("Review updated.");
   }
+
   document.addEventListener("hmb-new-directed", () => {
     current = null; trainingTask = null; completeMedia = false; failedBlob = null; readOnly = false; historicalView = false;
-    $("directedGoal").value = ""; $("directedDone").value = ""; $("directedComplete").checked = false;
-    $("directedVideo").removeAttribute("src"); $("directedVideo").hidden = true;
-    $("directedRetryUpload").hidden = true; $("directedReviewPanel").replaceChildren(); $("directedReviewPanel").hidden = true;
+    resetRecordingInputs();
+    $("directedRetryUpload").hidden = true;
+    $("directedReviewPanel").replaceChildren(); $("directedReviewPanel").hidden = true;
     showStage("describe"); say("Choose an app and task to get started."); refreshReady();
   });
+
   document.addEventListener("hmb-training-session", event => {
     current = event.detail.session || null; trainingTask = event.detail.task || null;
     historicalView = !!event.detail.historical;
@@ -248,26 +351,32 @@
     $("directedReviewPanel").replaceChildren(); $("directedReviewPanel").hidden = true;
     refreshReady();
   });
+
   document.addEventListener("hmb-training-start-record", async event => {
     if (!current?.id || busy) return;
     busy = true; refreshReady();
     try {
-      // A return from the review panel may emit this event without detail. Any
-      // read-only session must remain GET-only, including that path.
       const task = (event.detail?.historical || readOnly) ? current : await ensureSession();
       $("directedComplete").checked = false; completeMedia = false;
       $("directedVideo").removeAttribute("src"); $("directedVideo").hidden = true;
       if (task.media_url) {
-        const video = $("directedVideo"); video.src = `${task.media_url}?t=${Date.now()}`; video.hidden = false;
+        const video = $("directedVideo");
+        video.src = `${task.media_url}?t=${Date.now()}`;
+        video.hidden = false;
         try { await waitForPlayable(video); completeMedia = true; say("Saved video loaded. Review it and confirm it shows one complete example."); }
         catch (error) { completeMedia = false; say(`Saved video could not be played. ${error.message}`); }
       } else say("Record or import one complete example.");
       showStage("record"); $("directedRecordTitle").focus();
       if (readOnly) say(`${historicalView ? "Historical" : "Last tested"} version is read-only. You can review its saved video; return to current task details to edit or create a new training version.`);
-    } catch (error) { say(`Could not open this version. ${error.message}`); document.dispatchEvent(new CustomEvent("hmb-training-back-to-details")); }
-    finally { busy = false; refreshReady(); }
+    } catch (error) {
+      say(`Could not open this version. ${error.message}`);
+      document.dispatchEvent(new CustomEvent("hmb-training-back-to-details"));
+    } finally { busy = false; refreshReady(); }
   });
-  $("directedEditDetails").onclick = () => { if (!busy && !recording) document.dispatchEvent(new CustomEvent("hmb-training-back-to-details")); };
+
+  $("directedEditDetails").onclick = () => {
+    if (!busy && !recording) document.dispatchEvent(new CustomEvent("hmb-training-back-to-details"));
+  };
   document.addEventListener("hmb-training-review", () => { showStage("review"); });
 
   function renderRecipeCard(card) {
@@ -276,27 +385,21 @@
     panel.replaceChildren();
     add("p", "3-LINE RECIPE CARD", panel, "eyebrow");
     add("h3", card.title || "Workflow Recipe", panel);
-    const dl = document.createElement("dl");
-    dl.className = "receipt-fields";
+    const dl = add("dl", "", panel, "receipt-fields");
     add("dt", "When you give me", dl);
     add("dd", Array.isArray(card.when_you_give_me) ? card.when_you_give_me.join("; ") : String(card.when_you_give_me || ""), dl);
     add("dt", "I will do", dl);
     add("dd", Array.isArray(card.i_will_do) ? card.i_will_do.join(" → ") : String(card.i_will_do || ""), dl);
     add("dt", "You will get", dl);
     add("dd", String(card.you_will_get || ""), dl);
-    panel.append(dl);
     panel.hidden = false;
   }
 
   async function refreshRecipeCard() {
     const tid = trainingTask?.id || current?.id;
     if (!tid || !$("recipeCardPanel")) return;
-    try {
-      const card = await request(`/api/tasks/${encodeURIComponent(tid)}/recipe-card`);
-      renderRecipeCard(card);
-    } catch {
-      /* ignore for sessions without recipe card */
-    }
+    try { renderRecipeCard(await request(`/api/tasks/${encodeURIComponent(tid)}/recipe-card`)); }
+    catch { /* ignore for sessions without recipe card */ }
   }
 
   if ($("quickRecordBegin")) {
@@ -309,16 +412,9 @@
         for (const id of ["trainingAppStage", "trainingTaskStage", "trainingDescriptionStage"]) {
           if ($(id)) $(id).hidden = true;
         }
-        current = qr.session;
-        trainingTask = qr.task;
-        readOnly = false;
-        historicalView = false;
-        completeMedia = false;
-        $("directedGoal").value = "";
-        $("directedDone").value = "";
-        $("directedComplete").checked = false;
-        $("directedVideo").removeAttribute("src");
-        $("directedVideo").hidden = true;
+        current = qr.session; trainingTask = qr.task;
+        readOnly = false; historicalView = false; completeMedia = false;
+        resetRecordingInputs();
         if ($("quickRecordBanner")) {
           $("quickRecordBanner").hidden = false;
           $("quickRecordNameInput").value = qr.task_name || "Quick Workflow #1";
@@ -332,10 +428,7 @@
         say("Instant record ready. Record or import one example, or rename anytime.");
       } catch (error) {
         say(`Could not start instant record. ${error.message}`);
-      } finally {
-        busy = false;
-        refreshReady();
-      }
+      } finally { busy = false; refreshReady(); }
     };
   }
 
@@ -347,8 +440,7 @@
       busy = true;
       try {
         const res = await request(`/api/tasks/${encodeURIComponent(tid)}/quick-rename`, {
-          method: "PUT",
-          body: JSON.stringify({task_name: newName}),
+          method: "PUT", body: JSON.stringify({task_name: newName}),
         });
         if (trainingTask) trainingTask.name = res.task_name;
         if (current?.answers) current.answers.teaching_task_name = res.task_name;
@@ -357,10 +449,7 @@
         say(`Renamed workflow to ${res.task_name}.`);
       } catch (error) {
         say(`Could not rename workflow. ${error.message}`);
-      } finally {
-        busy = false;
-        refreshReady();
-      }
+      } finally { busy = false; refreshReady(); }
     };
   }
 
@@ -372,61 +461,48 @@
       $("sandboxDryRunBtn").disabled = true;
       try {
         const res = await request(`/api/tasks/${encodeURIComponent(tid)}/hybrid-run`, {
-          method: "POST",
-          body: JSON.stringify({dry_run: true}),
+          method: "POST", body: JSON.stringify({dry_run: true}),
         });
         const out = $("sandboxDiffOutput");
         if (out) {
           out.replaceChildren();
           const diff = res.before_after_diff || {};
           const filesAfter = (diff.files_after || []).join(", ");
-          add(
-            "p",
-            `Sandbox Dry-Run ${res.status === "verified" ? "Verified" : "Needs Agent Assist"} (real files untouched). Files after: ${filesAfter}`,
-            out
-          );
+          add("p", `Sandbox Dry-Run ${res.status === "verified" ? "Verified" : "Needs Agent Assist"} (real files untouched). Files after: ${filesAfter}`, out);
           out.hidden = false;
         }
         await refreshRecipeCard();
       } catch (error) {
         say(`Sandbox dry-run failed. ${error.message}`);
       } finally {
-        busy = false;
-        $("sandboxDryRunBtn").disabled = false;
-        refreshReady();
+        busy = false; $("sandboxDryRunBtn").disabled = false; refreshReady();
       }
     };
   }
 
-
   // -------------------------------------------------------------------------
   // 1-Button Record -> 1-Button Stop -> Instant AI Auto-Review + Multiple Choice
   // -------------------------------------------------------------------------
-  let ocRecorder = null;
-  let ocStream = null;
-  let ocChunks = [];
-  let ocTimerInterval = null;
-  let ocStartTime = 0;
-  let ocSession = null;
-  let ocNativeSessionId = null;
-  let ocWindowTitle = "";
+  let ocRecorder = null, ocStream = null, ocChunks = [], ocTimerInterval = null,
+      ocStartTime = 0, ocSession = null, ocNativeSessionId = null, ocWindowTitle = "";
 
-  function ocStatus(msg) {
-    if ($("oneClickStatus")) $("oneClickStatus").textContent = msg;
-  }
+  const ocStatus = msg => { if ($("oneClickStatus")) $("oneClickStatus").textContent = msg; };
 
   function stopOcStream() {
     if (ocTimerInterval) { clearInterval(ocTimerInterval); ocTimerInterval = null; }
     if (ocStream) { ocStream.getTracks().forEach(t => t.stop()); ocStream = null; }
   }
 
-  if ($("mcModalClose")) {
-    $("mcModalClose").onclick = () => {
-      if ($("mcModalOverlay")) $("mcModalOverlay").hidden = true;
-    };
+  function setOcRecordingUI(isRec) {
+    if ($("oneClickRecordBtn")) $("oneClickRecordBtn").hidden = isRec;
+    if ($("oneClickStopBtn")) $("oneClickStopBtn").hidden = !isRec;
   }
 
-  // Option A wizard: Name it -> Quick questions (max 3) -> Done (say-this + try it)
+  if ($("mcModalClose")) {
+    $("mcModalClose").onclick = () => { if ($("mcModalOverlay")) $("mcModalOverlay").hidden = true; };
+  }
+
+  // Wizard: Name it (Step 1) -> Activate / Tuning (Step 2) -> Done (Step 3)
   function renderMultipleChoiceUI(container, sessionId, reviewData) {
     const useModal = Boolean($("mcModalOverlay") && $("mcModalBody") && container?.id === "oneClickReviewCard");
     const target = useModal ? $("mcModalBody") : container;
@@ -440,32 +516,25 @@
     } else {
       container.hidden = false;
     }
+
     let currentMode = localStorage.getItem("hmb_user_mode") || "easy";
     let currentPageRenderer = null;
 
     function syncModeUI() {
-      const easyBtn = $("hmbModeEasyBtn");
-      const adminBtn = $("hmbModeAdminBtn");
-      if (easyBtn) easyBtn.classList.toggle("active", currentMode === "easy");
-      if (adminBtn) adminBtn.classList.toggle("active", currentMode === "admin");
+      const easy = currentMode === "easy";
+      $("hmbModeEasyBtn")?.classList.toggle("active", easy);
+      $("hmbModeAdminBtn")?.classList.toggle("active", !easy);
     }
 
-    if ($("hmbModeEasyBtn")) {
-      $("hmbModeEasyBtn").onclick = () => {
-        currentMode = "easy";
-        localStorage.setItem("hmb_user_mode", "easy");
-        syncModeUI();
-        if (currentPageRenderer) currentPageRenderer();
-      };
+    function setMode(mode) {
+      currentMode = mode;
+      localStorage.setItem("hmb_user_mode", mode);
+      syncModeUI();
+      if (currentPageRenderer) currentPageRenderer();
     }
-    if ($("hmbModeAdminBtn")) {
-      $("hmbModeAdminBtn").onclick = () => {
-        currentMode = "admin";
-        localStorage.setItem("hmb_user_mode", "admin");
-        syncModeUI();
-        if (currentPageRenderer) currentPageRenderer();
-      };
-    }
+
+    if ($("hmbModeEasyBtn")) $("hmbModeEasyBtn").onclick = () => setMode("easy");
+    if ($("hmbModeAdminBtn")) $("hmbModeAdminBtn").onclick = () => setMode("admin");
     syncModeUI();
 
     const badge = text => { if ($("mcStepBadge")) $("mcStepBadge").textContent = text; };
@@ -473,31 +542,36 @@
       app: "",
       task: "",
       taskId: reviewData.task_id,
-      choices: {},
+      choices: {
+        q_action: "recorded_flow",
+        q_input: "same_target",
+        q_done: "window_minimized",
+        q_safety: "sandbox_first",
+      },
     };
     const rawQuestions = reviewData.adaptive_questions || reviewData.multiple_choice_questions || [];
     let questions = rawQuestions.slice(0, 3);
     for (const q of questions) state.choices[q.id] = q.selected || q.options?.[0]?.id || "";
 
-    // ---------- Page 1: Name it ----------
+    // ---------- Step 1: Name it ----------
     function pageName() {
       currentPageRenderer = pageName;
       badge("STEP 1 OF 3 · NAME IT");
       target.replaceChildren();
       const head = add("h2", "What did you just teach me?", target, "hmb-wiz-title");
       head.tabIndex = -1;
-      const grid = document.createElement("div");
-      grid.className = "mc-top-grid";
+
+      const grid = add("div", "", target, "mc-top-grid");
       const vid = document.createElement("video");
       vid.controls = true; vid.playsInline = true; vid.preload = "metadata"; vid.muted = true;
       vid.src = `${reviewData.media_url || `/api/sessions/${sessionId}/media`}?t=${Date.now()}`;
       grid.append(vid);
-      const fields = document.createElement("div");
-      fields.className = "hmb-fields";
 
-      // 1. App Name (Single dropdown box with previous apps + type new)
-      const appLabel = add("label", "App", fields); appLabel.htmlFor = "hmbAppInput";
+      const fields = add("div", "", grid, "hmb-fields");
 
+      // App Name combobox
+      const appLabel = add("label", "App", fields);
+      appLabel.htmlFor = "hmbAppInput";
       const appInput = document.createElement("input");
       appInput.id = "hmbAppInput";
       appInput.setAttribute("list", "hmbAppList");
@@ -507,16 +581,10 @@
       appInput.autocomplete = "off";
       fields.append(appInput);
 
-      const datalist = document.createElement("datalist");
+      const datalist = add("datalist", "", fields);
       datalist.id = "hmbAppList";
-      fields.append(datalist);
+      add("small", "Enter the name of your app", fields, "hmb-field-hint");
 
-      const appHint = document.createElement("small");
-      appHint.className = "hmb-field-hint";
-      appHint.textContent = "Enter the name of your app";
-      fields.append(appHint);
-
-      // Populate previous app names into datalist
       let appOptions = Array.from(new Set([
         ...(reviewData.app_options || []),
         ...(reviewData.detected_app ? [reviewData.detected_app] : []),
@@ -532,9 +600,8 @@
       }
       populateAppDropdown(appOptions);
 
-      // Also merge any other registered apps from the database
       request("/api/training/apps").then(res => {
-        if (res && res.apps) {
+        if (res?.apps) {
           let updated = false;
           for (const a of res.apps) {
             if (a.name && !appOptions.includes(a.name)) {
@@ -546,30 +613,23 @@
         }
       }).catch(() => {});
 
-      // Open the dropdown list on click
       appInput.onclick = () => {
-        if (appInput.showPicker) {
-          try { appInput.showPicker(); } catch {}
-        }
+        try { appInput.showPicker?.(); } catch {}
       };
 
-      // 2. Task Name (Friendly name, blank by default)
-      const taskLabel = add("label", "Task", fields); taskLabel.htmlFor = "hmbTaskInput";
+      // Task Name
+      const taskLabel = add("label", "Task", fields);
+      taskLabel.htmlFor = "hmbTaskInput";
       const taskInput = document.createElement("input");
       taskInput.id = "hmbTaskInput";
       taskInput.maxLength = 160;
       taskInput.value = state.task || "";
       taskInput.placeholder = "e.g. Resize image to 1080px, Organize files…";
       fields.append(taskInput);
-
-      const taskHint = document.createElement("small");
-      taskHint.className = "hmb-field-hint";
-      taskHint.textContent = "Enter a friendly name for this task";
-      fields.append(taskHint);
+      add("small", "Enter a friendly name for this task", fields, "hmb-field-hint");
 
       if (currentMode === "admin") {
-        const adminBox = document.createElement("div");
-        adminBox.className = "hmb-admin-section";
+        const adminBox = add("div", "", fields, "hmb-admin-section");
         adminBox.style.marginTop = "10px";
         adminBox.innerHTML = `
           <div class="hmb-admin-section-title">⚙️ Admin Metadata</div>
@@ -580,36 +640,23 @@
             <div>Session ID: <code>${sessionId}</code></div>
           </div>
         `;
-        fields.append(adminBox);
       }
 
-      grid.append(fields);
-      target.append(grid);
-
       const next = add("button", "Looks right →", target, "mc-approve-btn");
-      next.id = "hmbNameNext"; next.type = "button";
+      next.id = "hmbNameNext";
+      next.type = "button";
       const note = add("p", "", target, "task-status");
 
       function validate() {
-        const appVal = appInput.value.trim();
-        const taskVal = taskInput.value.trim();
-        state.app = appVal;
-        state.task = taskVal;
-        next.disabled = !appVal || !taskVal;
+        state.app = appInput.value.trim();
+        state.task = taskInput.value.trim();
+        next.disabled = !state.app || !state.task;
       }
 
-      appInput.oninput = () => {
-        if (appOptions.includes(appInput.value.trim())) {
-          appSelect.value = appInput.value.trim();
-        } else {
-          appSelect.value = "";
-        }
-        validate();
-      };
+      appInput.oninput = validate;
       taskInput.oninput = validate;
-
-      for (const input of [appInput, taskInput]) {
-        input.onkeydown = event => { if (event.key === "Enter" && !next.disabled) next.click(); };
+      for (const inp of [appInput, taskInput]) {
+        inp.onkeydown = e => { if (e.key === "Enter" && !next.disabled) next.click(); };
       }
       validate();
 
@@ -620,8 +667,10 @@
             method: "POST",
             body: JSON.stringify({app_name: appInput.value.trim(), task_name: taskInput.value.trim()}),
           });
-          state.app = saved.app_name; state.task = saved.task_name; state.taskId = saved.task_id;
-          if (saved.questions && saved.questions.length) {
+          state.app = saved.app_name;
+          state.task = saved.task_name;
+          state.taskId = saved.task_id;
+          if (saved.questions?.length) {
             questions = saved.questions.slice(0, 3);
             for (const q of questions) state.choices[q.id] = q.selected || q.options?.[0]?.id || "";
           }
@@ -635,33 +684,25 @@
       (appInput.value ? taskInput : appInput).focus();
     }
 
-    // ---------- Page 2: Easy Mode by default + Admin Mode ----------
+    // ---------- Step 2: Smart Tuning / Activation ----------
     function pageSmartTuning() {
       currentPageRenderer = pageSmartTuning;
       const isAdmin = currentMode === "admin";
       badge(isAdmin ? "STEP 2 OF 3 · ACTIVATE (ADMIN)" : "STEP 2 OF 3 · ACTIVATE");
       target.replaceChildren();
 
-      state.choices.q_action = state.choices.q_action || "recorded_flow";
-      state.choices.q_input = state.choices.q_input || "same_target";
-      state.choices.q_done = state.choices.q_done || "window_minimized";
-      state.choices.q_safety = state.choices.q_safety || "sandbox_first";
-
-      const top = document.createElement("div");
+      const top = add("div", "", target);
       top.style.marginBottom = "8px";
       const heading = add("h2", isAdmin ? "Task Configuration & Safety Controls" : "Ready to activate your task?", top, "hmb-wiz-title");
       heading.tabIndex = -1;
       add("p", `${state.task} in ${state.app}`, top, "eyebrow");
-      target.append(top);
 
       if (!isAdmin) {
-        // Clean Simple Mode: 3 Smart Defaults Summary
-        const summaryCard = document.createElement("div");
-        summaryCard.className = "hmb-simple-finish-card";
-        summaryCard.style.padding = "14px 16px";
-        summaryCard.style.margin = "10px 0";
-
-        summaryCard.innerHTML = `
+        // Simple Mode: 3 Smart Defaults Summary
+        const summary = add("div", "", target, "hmb-simple-finish-card");
+        summary.style.padding = "14px 16px";
+        summary.style.margin = "10px 0";
+        summary.innerHTML = `
           <div style="font-size:12px; font-weight:700; color:#5c584c; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">
             ⚡ Smart Replay Defaults
           </div>
@@ -680,78 +721,57 @@
             </div>
           </div>
         `;
-        target.append(summaryCard);
       } else {
-        // Full Admin Tuning Grid
-        const grid = document.createElement("div");
-        grid.className = "hmb-tune-grid";
-
-        grid.append(createTuneRow({
-          icon: "⚡",
-          title: "Input & Target",
-          desc: "Does this repeat the exact same actions, or need input each time?",
-          options: [
-            { id: "same_target", label: "Exact Replay", desc: "Always repeat what was recorded" },
-            { id: "ask_each_time", label: "Ask for Input", desc: "Ask for target/parameters before running" },
-          ],
-          current: state.choices.q_input,
-          onSelect: val => { state.choices.q_input = val; },
-        }));
-
-        grid.append(createTuneRow({
-          icon: "👁️",
-          title: "Completion Check",
-          desc: "How does your assistant confirm the task succeeded?",
-          options: [
-            { id: "window_minimized", label: "App Completes", desc: "When window closes or action completes" },
-            { id: "verified_output", label: "Receipt / File Saved", desc: "When verified output file exists" },
-          ],
-          current: state.choices.q_done,
-          onSelect: val => { state.choices.q_done = val; },
-        }));
-
-        grid.append(createTuneRow({
-          icon: "🛡️",
-          title: "Safety & Sandboxing",
-          desc: "Protect real system files before execution",
-          options: [
-            { id: "sandbox_first", label: "Safe Sandbox First", desc: "Simulate and verify before real changes" },
-            { id: "pause_immediately", label: "Pause & Ask Me", desc: "Always confirm before running" },
-          ],
-          current: state.choices.q_safety,
-          onSelect: val => { state.choices.q_safety = val; },
-        }));
-
-        target.append(grid);
+        // Admin Mode: Full Tuning Grid
+        const grid = add("div", "", target, "hmb-tune-grid");
+        const tuneRows = [
+          {
+            icon: "⚡", title: "Input & Target", desc: "Does this repeat the exact same actions, or need input each time?",
+            options: [
+              { id: "same_target", label: "Exact Replay", desc: "Always repeat what was recorded" },
+              { id: "ask_each_time", label: "Ask for Input", desc: "Ask for target/parameters before running" },
+            ],
+            current: state.choices.q_input,
+            onSelect: val => { state.choices.q_input = val; },
+          },
+          {
+            icon: "👁️", title: "Completion Check", desc: "How does your assistant confirm the task succeeded?",
+            options: [
+              { id: "window_minimized", label: "App Completes", desc: "When window closes or action completes" },
+              { id: "verified_output", label: "Receipt / File Saved", desc: "When verified output file exists" },
+            ],
+            current: state.choices.q_done,
+            onSelect: val => { state.choices.q_done = val; },
+          },
+          {
+            icon: "🛡️", title: "Safety & Sandboxing", desc: "Protect real system files before execution",
+            options: [
+              { id: "sandbox_first", label: "Safe Sandbox First", desc: "Simulate and verify before real changes" },
+              { id: "pause_immediately", label: "Pause & Ask Me", desc: "Always confirm before running" },
+            ],
+            current: state.choices.q_safety,
+            onSelect: val => { state.choices.q_safety = val; },
+          },
+        ];
+        for (const rowConfig of tuneRows) grid.append(createTuneRow(rowConfig));
       }
 
-      // Primary Navigation & Action
-      const nav = document.createElement("div");
-      nav.className = "mc-step-nav";
+      // Step Navigation
+      const nav = add("div", "", target, "mc-step-nav");
       nav.style.marginTop = "14px";
-      const back = add("button", "← Back to naming", nav, "quiet"); back.type = "button";
-      back.onclick = pageName;
+      const back = add("button", "← Back to naming", nav, "quiet");
+      back.type = "button"; back.onclick = pageName;
 
       const finishBtn = add("button", "Looks Great — Save & Activate ✨", nav, "primary");
       finishBtn.id = "oneClickApproveBtn"; finishBtn.type = "button";
-      finishBtn.style.padding = "10px 22px";
-      finishBtn.style.fontSize = "15px";
+      finishBtn.style.padding = "10px 22px"; finishBtn.style.fontSize = "15px";
       finishBtn.onclick = finish;
-      target.append(nav);
 
-      // Mode Switch Shortcut
-      const toggleWrap = document.createElement("div");
-      toggleWrap.style.textAlign = "center";
-      toggleWrap.style.marginTop = "10px";
+      const toggleWrap = add("div", "", target);
+      toggleWrap.style.textAlign = "center"; toggleWrap.style.marginTop = "10px";
       const toggleBtn = add("button", isAdmin ? "🐣 Switch to Simple Mode" : "⚙️ Need custom settings? Switch to Admin Mode", toggleWrap, "hmb-admin-toggle");
       toggleBtn.type = "button";
-      toggleBtn.onclick = () => {
-        currentMode = isAdmin ? "easy" : "admin";
-        localStorage.setItem("hmb_user_mode", currentMode);
-        syncModeUI();
-        pageSmartTuning();
-      };
-      target.append(toggleWrap);
+      toggleBtn.onclick = () => setMode(isAdmin ? "easy" : "admin");
 
       heading.focus();
     }
@@ -759,32 +779,26 @@
     function createTuneRow({icon, title, desc, options, current, onSelect}) {
       const row = document.createElement("div");
       row.className = "hmb-tune-row";
-      const hdr = document.createElement("div");
-      hdr.className = "hmb-tune-header";
+      const hdr = add("div", "", row, "hmb-tune-header");
       hdr.innerHTML = `<span class="hmb-tune-icon">${icon}</span><div><strong>${title}</strong><small>${desc}</small></div>`;
-      row.append(hdr);
 
-      const pills = document.createElement("div");
-      pills.className = "hmb-tune-pills";
-      const btns = [];
+      const pills = add("div", "", row, "hmb-tune-pills");
       for (const opt of options) {
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "hmb-tune-pill" + (opt.id === current ? " selected" : "");
+        btn.className = `hmb-tune-pill${opt.id === current ? " selected" : ""}`;
         btn.innerHTML = `<span class="pill-title">${opt.label}</span><span class="pill-desc">${opt.desc}</span>`;
         btn.onclick = () => {
-          btns.forEach(b => b.classList.remove("selected"));
+          pills.querySelectorAll(".hmb-tune-pill").forEach(b => b.classList.remove("selected"));
           btn.classList.add("selected");
           onSelect(opt.id);
         };
-        btns.push(btn);
         pills.append(btn);
       }
-      row.append(pills);
       return row;
     }
 
-    // ---------- Page 3: Done — Human & Intuitive Celebration (Simple + Admin) ----------
+    // ---------- Step 3: Finish & Celebration (Simple + Admin) ----------
     let finishData = null;
 
     async function finish() {
@@ -800,7 +814,8 @@
         target.replaceChildren();
         add("h2", "Could not save workflow", target, "hmb-wiz-title");
         add("p", err.message, target, "task-status");
-        const retry = add("button", "Try again", target, "mc-approve-btn"); retry.type = "button"; retry.onclick = finish;
+        const retry = add("button", "Try again", target, "mc-approve-btn");
+        retry.type = "button"; retry.onclick = finish;
         return;
       }
       state.taskId = finishData.task_id || state.taskId;
@@ -819,10 +834,8 @@
       const slug = (cleanTask.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")) || "my-task";
 
       if (!isAdmin) {
-        // ========== SIMPLE MODE ==========
-        const simpleCard = document.createElement("div");
-        simpleCard.className = "hmb-simple-finish-card";
-
+        // Simple Mode: Celebration hero card + 1-click sandbox run + CLI hint
+        const simpleCard = add("div", "", target, "hmb-simple-finish-card");
         simpleCard.innerHTML = `
           <div class="hmb-finish-hero">
             <span class="hmb-finish-icon">🎉</span>
@@ -845,7 +858,6 @@
             <button type="button" class="quiet hmb-copy-mini-btn" id="hmbCliCopyBtn">📋 Copy</button>
           </div>
         `;
-        target.append(simpleCard);
 
         const runBtn = simpleCard.querySelector("#hmbRunNowBtn");
         const receipt = simpleCard.querySelector("#hmbSimpleReceipt");
@@ -861,58 +873,64 @@
           }
         };
 
-        runBtn.onclick = async () => {
-          runBtn.disabled = true;
-          runBtn.textContent = "Running in Safe Sandbox…";
+        async function runSandbox({btn, receipt, parameters, successTitle, successBody, failTitle, idleText}) {
+          btn.disabled = true;
+          btn.textContent = "Running in Safe Sandbox…";
           receipt.style.display = "block";
           receipt.innerHTML = `<span style="color:#777;">⏳ Running isolated sandbox simulation…</span>`;
           try {
             const run = await request(`/api/tasks/${encodeURIComponent(state.taskId)}/hybrid-run`, {
-              method: "POST", body: JSON.stringify({dry_run: true, parameters: {}}),
+              method: "POST", body: JSON.stringify({dry_run: true, parameters: parameters || {}}),
             });
             if (run.status === "verified") {
               const count = (run.steps || []).length || 1;
               receipt.innerHTML = `
-                <div style="color:#2d6914; font-weight:700; margin-bottom:4px;">✔ Ran Successfully (${count} step${count === 1 ? "" : "s"} verified)</div>
-                <div style="font-size:12px; color:#444;">Task executed safely in background sandbox. Real files untouched.</div>
+                <div style="color:#2d6914; font-weight:700; margin-bottom:4px;">✔ ${successTitle(count)}</div>
+                ${successBody}
               `;
             } else {
               receipt.innerHTML = `
-                <div style="color:#b25900; font-weight:700;">⚠️ Finished with Note</div>
-                <div style="font-size:12px; color:#444;">${run.diagnostic_snapshot?.observed_state || "Completed with warnings."}</div>
+                <div style="color:#b25900; font-weight:700;">⚠️ ${failTitle}</div>
+                <div style="font-size:12px; color:#444;">${run.diagnostic_snapshot?.observed_state || "Action completed with warnings."}</div>
               `;
             }
           } catch (err) {
             receipt.innerHTML = `<span style="color:#a1261d;">❌ Could not run: ${err.message}</span>`;
           } finally {
-            runBtn.disabled = false;
-            runBtn.textContent = "▶ Run Task Again";
+            btn.disabled = false;
+            btn.textContent = idleText;
           }
-        };
+        }
 
-        // Hidden elements for backward test compatibility
-        const compatContainer = document.createElement("div");
-        compatContainer.style.display = "none";
-        compatContainer.innerHTML = `
+        runBtn.onclick = () => runSandbox({
+          btn: runBtn,
+          receipt,
+          parameters: {},
+          successTitle: count => `Ran Successfully (${count} step${count === 1 ? "" : "s"} verified)`,
+          successBody: `<div style="font-size:12px; color:#444;">Task executed safely in background sandbox. Real files untouched.</div>`,
+          failTitle: "Finished with Note",
+          idleText: "▶ Run Task Again",
+        });
+
+        // Hidden backward-compatibility elements for tests
+        const compat = add("div", "", target);
+        compat.style.display = "none";
+        compat.innerHTML = `
           <div id="oneClickResultBox">${res.say_this || ""}</div>
           <input id="hmbTryInput" value="${res.try_param?.default || ""}" />
           <button id="hmbTryBtn" type="button"></button>
           <div id="hmbTryResult"></div>
         `;
-        target.append(compatContainer);
-
       } else {
-        // ========== ADMIN MODE ==========
-        const headBox = document.createElement("div");
+        // Admin Mode: Technical admin metadata, agent connectors, parameter test drive
+        const headBox = add("div", "", target);
         headBox.style.marginBottom = "10px";
         const title = add("h2", `🛠️ Task Administration: ${cleanTask}`, headBox, "hmb-wiz-title");
         title.tabIndex = -1;
         add("p", `Task ID: ${state.taskId} · App: ${cleanApp} · Engine: Hybrid Deterministic Replay`, headBox, "eyebrow");
-        target.append(headBox);
 
-        // Connected AI Agent Integrations Section
-        const agentSection = document.createElement("div");
-        agentSection.className = "hmb-admin-section";
+        // Connected AI Agent Integrations
+        const agentSection = add("div", "", target, "hmb-admin-section");
         agentSection.innerHTML = `
           <div class="hmb-admin-section-title">🤖 Connected AI Agent Integrations</div>
           <div class="hmb-agent-row">
@@ -932,108 +950,74 @@
             <button id="hmbExportSkillBtn" type="button" class="quiet hmb-copy-mini-btn">📥 Export SKILL.md</button>
           </div>
         `;
-        target.append(agentSection);
 
         const exportBtn = agentSection.querySelector("#hmbExportSkillBtn");
         exportBtn.onclick = async () => {
-          exportBtn.disabled = true;
-          exportBtn.textContent = "Exporting…";
+          exportBtn.disabled = true; exportBtn.textContent = "Exporting…";
           try {
             const exp = await request(`/api/tasks/${encodeURIComponent(state.taskId)}/export-skill`, {method: "POST"});
             exportBtn.textContent = exp.export_dir ? "Exported ✓" : "Downloaded ✓";
             alert(`SKILL.md bundle exported to:\n${exp.export_dir || "downloads"}`);
           } catch (err) {
             alert(`Export note: ${err.message}`);
-          } finally {
-            exportBtn.disabled = false;
-          }
+          } finally { exportBtn.disabled = false; }
         };
 
         // Test Drive Simulation with Parameters
-        const simCard = document.createElement("div");
-        simCard.className = "hmb-done-card";
+        const simCard = add("div", "", target, "hmb-done-card");
         simCard.style.marginTop = "10px";
-
-        const simHdr = document.createElement("div");
+        const simHdr = add("div", "", simCard);
         simHdr.innerHTML = `
           <h3>🧪 Sandbox Test Drive & Diff Inspector</h3>
           <small style="color:var(--muted); font-size:12px; display:block; margin-top:2px;">
             Simulate parameter bindings and inspect before/after sandbox state:
           </small>
         `;
-        simCard.append(simHdr);
 
-        const simRow = document.createElement("div");
-        simRow.className = "hmb-try-row";
+        const simRow = add("div", "", simCard, "hmb-try-row");
         simRow.style.marginTop = "10px";
 
-        let tryInput = null;
+        const tryInput = document.createElement("input");
+        tryInput.id = "hmbTryInput";
         if (res.try_param) {
-          tryInput = document.createElement("input");
-          tryInput.id = "hmbTryInput";
           tryInput.value = res.try_param.default ?? "yahoo.com";
           tryInput.placeholder = res.try_param.label || "Target or parameter";
           tryInput.setAttribute("aria-label", res.try_param.label || "Target");
-          simRow.append(tryInput);
         } else {
-          tryInput = document.createElement("input");
-          tryInput.id = "hmbTryInput";
           tryInput.value = "test-target";
           tryInput.placeholder = "Optional parameter input";
           tryInput.setAttribute("aria-label", "Target");
-          simRow.append(tryInput);
         }
+        simRow.append(tryInput);
 
         const simBtn = add("button", "▶ Run Test Simulation", simRow, "primary");
         simBtn.id = "hmbTryBtn"; simBtn.type = "button";
-        simBtn.style.padding = "8px 18px";
-        simBtn.style.whiteSpace = "nowrap";
-        simCard.append(simRow);
+        simBtn.style.padding = "8px 18px"; simBtn.style.whiteSpace = "nowrap";
 
-        const simReceipt = document.createElement("div");
+        const simReceipt = add("div", "", simCard, "hmb-receipt-box");
         simReceipt.id = "hmbTryResult";
-        simReceipt.className = "hmb-receipt-box";
         simReceipt.style.display = "none";
-        simCard.append(simReceipt);
 
-        simBtn.onclick = async () => {
-          simBtn.disabled = true;
-          simBtn.textContent = "Simulating…";
-          simReceipt.style.display = "block";
-          simReceipt.innerHTML = `<span style="color:#777;">⏳ Running isolated sandbox simulation…</span>`;
-          try {
-            const parameters = res.try_param && tryInput ? {[res.try_param.name]: tryInput.value.trim()} : {};
-            const run = await request(`/api/tasks/${encodeURIComponent(state.taskId)}/hybrid-run`, {
-              method: "POST", body: JSON.stringify({dry_run: true, parameters}),
-            });
-            if (run.status === "verified") {
-              const stepsCount = (run.steps || []).length || 1;
-              const targetVal = tryInput ? tryInput.value.trim() : cleanTask;
-              simReceipt.innerHTML = `
-                <div style="color:#2d6914; font-weight:700; margin-bottom:4px;">✔ Test Simulation Passed (${stepsCount} step${stepsCount === 1 ? "" : "s"} verified)</div>
-                <div style="font-size:11px; color:#555;">Target: <strong>${targetVal}</strong></div>
-                <div style="font-size:11px; color:#555;">Sandbox: Real files and desktop untouched. Safe for live use.</div>
-              `;
-            } else {
-              simReceipt.innerHTML = `
-                <div style="color:#b25900; font-weight:700;">⚠️ Needs Attention</div>
-                <div style="font-size:11px; color:#555;">${run.diagnostic_snapshot?.observed_state || "Action completed with warnings"}.</div>
-              `;
-            }
-          } catch (err) {
-            simReceipt.innerHTML = `<span style="color:#a1261d;">❌ Test failed: ${err.message}</span>`;
-          } finally {
-            simBtn.disabled = false;
-            simBtn.textContent = "▶ Run Test Simulation";
-          }
+        simBtn.onclick = () => {
+          const targetVal = tryInput.value.trim() || cleanTask;
+          const parameters = res.try_param ? {[res.try_param.name]: tryInput.value.trim()} : {};
+          return runSandbox({
+            btn: simBtn,
+            receipt: simReceipt,
+            parameters,
+            successTitle: count => `Test Simulation Passed (${count} step${count === 1 ? "" : "s"} verified)`,
+            successBody: `
+              <div style="font-size:11px; color:#555;">Target: <strong>${targetVal}</strong></div>
+              <div style="font-size:11px; color:#555;">Sandbox: Real files and desktop untouched. Safe for live use.</div>
+            `,
+            failTitle: "Needs Attention",
+            idleText: "▶ Run Test Simulation",
+          });
         };
-
-        target.append(simCard);
 
         // Natural Voice Speech Box in Admin
         if (res.say_this) {
-          const speechCard = document.createElement("div");
-          speechCard.className = "hmb-speech-bubble";
+          const speechCard = add("div", "", target, "hmb-speech-bubble");
           speechCard.id = "oneClickResultBox";
           speechCard.style.marginTop = "10px";
           speechCard.innerHTML = `
@@ -1042,13 +1026,11 @@
               <strong>“${res.say_this}”</strong>
             </div>
           `;
-          target.append(speechCard);
         }
       }
 
-      // Actions (present in both modes)
-      const actions = document.createElement("div");
-      actions.className = "hmb-done-actions";
+      // Actions in both modes
+      const actions = add("div", "", target, "hmb-done-actions");
       actions.style.marginTop = "16px";
 
       const anotherBtn = add("button", "+ Teach Another Task", actions, "quiet");
@@ -1061,31 +1043,19 @@
 
       const allDoneBtn = add("button", "All Done ✓", actions, "primary");
       allDoneBtn.type = "button";
-      allDoneBtn.style.padding = "10px 28px";
-      allDoneBtn.style.fontSize = "15px";
+      allDoneBtn.style.padding = "10px 28px"; allDoneBtn.style.fontSize = "15px";
       allDoneBtn.onclick = () => {
         if ($("mcModalOverlay")) $("mcModalOverlay").hidden = true;
         container.hidden = true;
       };
 
-      target.append(actions);
-
-      // Mode Switch Shortcut footer
-      const toggleWrap = document.createElement("div");
-      toggleWrap.style.textAlign = "center";
-      toggleWrap.style.marginTop = "12px";
+      const toggleWrap = add("div", "", target);
+      toggleWrap.style.textAlign = "center"; toggleWrap.style.marginTop = "12px";
       const toggleBtn = add("button", isAdmin ? "🐣 Switch to Simple Mode" : "⚙️ View Agent MCP Configs & Admin Tools", toggleWrap, "hmb-admin-toggle");
       toggleBtn.type = "button";
-      toggleBtn.onclick = () => {
-        currentMode = isAdmin ? "easy" : "admin";
-        localStorage.setItem("hmb_user_mode", currentMode);
-        syncModeUI();
-        renderFinishPage();
-      };
-      target.append(toggleWrap);
+      toggleBtn.onclick = () => setMode(isAdmin ? "easy" : "admin");
 
       ocStatus(`Learned “${cleanTask}”.`);
-      title.focus();
     }
 
     pageName();
@@ -1096,16 +1066,13 @@
     try {
       if (!ocSession) {
         const qr = await request("/api/quick-record", {
-          method: "POST",
-          body: JSON.stringify({window_title: windowTitle || undefined}),
+          method: "POST", body: JSON.stringify({window_title: windowTitle || undefined}),
         });
         ocSession = qr.session;
       }
       const cleanMime = (blob.type || "video/webm").split(";")[0];
       await request(`/api/sessions/${ocSession.id}/media`, {
-        method: "POST",
-        headers: {"Content-Type": cleanMime},
-        body: blob,
+        method: "POST", headers: {"Content-Type": cleanMime}, body: blob,
       });
       const reviewData = await request(`/api/sessions/${ocSession.id}/auto-review`, {
         method: "POST",
@@ -1135,17 +1102,28 @@
     }, 500);
   }
 
+  async function triggerInstantAutoReview() {
+    stopOcStream();
+    setOcRecordingUI(false);
+    const qr = await request("/api/quick-record", {method: "POST", body: JSON.stringify({})});
+    ocSession = qr.session;
+    const reviewData = await request(`/api/sessions/${ocSession.id}/auto-review`, {
+      method: "POST", body: JSON.stringify({duration_seconds: 2.5}),
+    });
+    if ($("oneClickReviewCard")) {
+      renderMultipleChoiceUI($("oneClickReviewCard"), ocSession.id, reviewData);
+    }
+  }
+
   if ($("oneClickRecordBtn")) {
     $("oneClickRecordBtn").onclick = async () => {
       if (ocRecorder?.state === "recording" || ocNativeSessionId) return;
       try {
-        // 1. Try 1-Click Native Desktop Capture first (bypasses Chrome Share Screen popup completely!)
         const nativeRes = await request("/api/native-record/start", {method: "POST", body: JSON.stringify({})});
-        if (nativeRes && nativeRes.supported && nativeRes.session_id) {
+        if (nativeRes?.supported && nativeRes.session_id) {
           ocNativeSessionId = nativeRes.session_id;
           startTimerTick();
-          $("oneClickRecordBtn").hidden = true;
-          $("oneClickStopBtn").hidden = false;
+          setOcRecordingUI(true);
           ocStatus("Recording your desktop now (no browser popup needed) — click Stop Recording when done.");
           return;
         }
@@ -1153,23 +1131,21 @@
         /* Fall back to browser capture or instant review */
       }
 
-      // 2. Fallback if native display is not present
       try {
         if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder) {
-          throw new Error("No local display");
+          return await triggerInstantAutoReview();
         }
         ocStream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: false});
         const vTrack = ocStream.getVideoTracks()[0];
         ocWindowTitle = vTrack?.label || "";
         const qr = await request("/api/quick-record", {
-          method: "POST",
-          body: JSON.stringify({window_title: ocWindowTitle || undefined}),
+          method: "POST", body: JSON.stringify({window_title: ocWindowTitle || undefined}),
         });
         ocSession = qr.session;
         ocChunks = [];
         const mime = ["video/webm;codecs=vp8", "video/webm"].find(t => MediaRecorder.isTypeSupported(t));
         ocRecorder = new MediaRecorder(ocStream, mime ? {mimeType: mime} : {});
-        ocRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) ocChunks.push(e.data); };
+        ocRecorder.ondataavailable = e => { if (e.data?.size > 0) ocChunks.push(e.data); };
         startTimerTick();
         if (vTrack) {
           vTrack.onended = () => { if (ocRecorder?.state === "recording") ocRecorder.stop(); };
@@ -1177,30 +1153,17 @@
         ocRecorder.onstop = async () => {
           const elapsed = Math.max(1, (Date.now() - ocStartTime) / 1000);
           stopOcStream();
-          $("oneClickRecordBtn").hidden = false;
-          $("oneClickStopBtn").hidden = true;
+          setOcRecordingUI(false);
           const blob = new Blob(ocChunks, {type: ocRecorder?.mimeType || "video/webm"});
           if (blob.size > 0) {
             await processOneClickBlob(blob, ocWindowTitle, elapsed);
           }
         };
         ocRecorder.start();
-        $("oneClickRecordBtn").hidden = true;
-        $("oneClickStopBtn").hidden = false;
+        setOcRecordingUI(true);
         ocStatus("Recording live — perform your task, then click Stop Recording.");
       } catch {
-        stopOcStream();
-        $("oneClickRecordBtn").hidden = false;
-        $("oneClickStopBtn").hidden = true;
-        const qr = await request("/api/quick-record", {method: "POST", body: JSON.stringify({})});
-        ocSession = qr.session;
-        const reviewData = await request(`/api/sessions/${ocSession.id}/auto-review`, {
-          method: "POST",
-          body: JSON.stringify({duration_seconds: 2.5}),
-        });
-        if ($("oneClickReviewCard")) {
-          renderMultipleChoiceUI($("oneClickReviewCard"), ocSession.id, reviewData);
-        }
+        await triggerInstantAutoReview();
       }
     };
   }
@@ -1211,13 +1174,11 @@
         const sid = ocNativeSessionId;
         ocNativeSessionId = null;
         stopOcStream();
-        $("oneClickRecordBtn").hidden = false;
-        $("oneClickStopBtn").hidden = true;
+        setOcRecordingUI(false);
         ocStatus("Stopping recording & opening AI Review popup…");
         try {
           const reviewData = await request(`/api/native-record/${sid}/stop`, {
-            method: "POST",
-            body: JSON.stringify({}),
+            method: "POST", body: JSON.stringify({}),
           });
           ocStatus("AI review ready.");
           if ($("oneClickReviewCard")) {

@@ -124,6 +124,8 @@ def test_zero_typing_auto_review_and_multiple_choice_answers(tmp_path):
     assert rev_data["status"] == "ready"
     assert len(rev_data["multiple_choice_questions"]) == 4
     assert rev_data["multiple_choice_questions"][0]["selected"] == "terminal_cmd"
+    assert rev_data["observations"] == []
+    assert rev_data["proposal"] is None
 
     # 3. Tap multiple-choice answers and confirm with sandbox dry-run
     ans = client.post(
@@ -141,6 +143,9 @@ def test_zero_typing_auto_review_and_multiple_choice_answers(tmp_path):
     )
     assert ans.status_code == 200
     ans_data = ans.json()
-    assert ans_data["status"] == "approved_and_verified"
+    assert ans_data["status"] == "saved_for_review"
+    assert ans_data["execution_ready"] is False
     assert ans_data["task_name"] == "DNS Lookup (nslookup)"
-    assert ans_data["sandbox_result"]["status"] == "verified"
+    assert ans_data["proposal"] is None
+    assert ans_data["sandbox_result"]["status"] == "needs_agent_assist"
+    assert not list((tmp_path / "artifacts").glob("*.understanding.json"))

@@ -399,26 +399,32 @@ def test_cli_list_empty(tmp_path, capsys):
 
 def test_cli_list_and_run_with_recipes(tmp_path, capsys):
     from holdmybeer.app import Store
-    from holdmybeer.hybrid import HybridRecipe, HybridParameter, HybridStep, save_hybrid_recipe
+    from holdmybeer.hybrid import HybridAssertion, HybridRecipe, HybridStep, save_hybrid_recipe
     data_dir = tmp_path / "data"
     store = Store(data_dir)
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    (target_dir / "sales.csv").write_text("item,amount\nBook,15\nPen,5\n", encoding="utf-8")
+    (target_dir / "photo.png").write_bytes(b"png")
     recipe = HybridRecipe(
         task_id="task-cli-test-1",
-        title="Lookup Domain In Terminal",
-        app_name="terminal",
-        parameters=[
-            HybridParameter(name="target_host", type="string", description="Domain name", default="yahoo.com", required=True),
-        ],
+        title="Summarize Sales and Organize Files",
+        app_name="Files and CSV",
         steps=[
             HybridStep(
-                id="s1",
-                action="browser_or_fixture_action",
-                goal="nslookup target domain",
-                check="nslookup command finished",
-                params={"command": "nslookup {target_host}"},
-            )
+                id="csv",
+                action="csv_summary_report",
+                goal="Summarize sales.csv",
+                check="summary report is written",
+                params={"csv_file": "sales.csv", "output_file": "summary.md", "numeric_column": "amount"},
+            ),
+            HybridStep(id="organize", action="file_organize_by_ext", goal="Organize files by extension"),
         ],
-        trigger_phrases=["Hey Ollie, run nslookup in terminal"],
+        assertions=[
+            HybridAssertion(type="non_empty_output", target="documents/summary.md", phase="post"),
+            HybridAssertion(type="file_exists", target="images/photo.png", phase="post"),
+        ],
+        trigger_phrases=["Summarize sales and organize files"],
     )
     save_hybrid_recipe(store, recipe.task_id, recipe)
 
@@ -426,27 +432,41 @@ def test_cli_list_and_run_with_recipes(tmp_path, capsys):
     code_list = cli.main(["list", "--data-dir", str(data_dir)])
     assert code_list == cli.EXIT_OK
     out_list = capsys.readouterr().out
-    assert "Lookup Domain In Terminal" in out_list
-    assert "lookup_domain_in_terminal" in out_list
-    assert "target_host" in out_list
-    assert "Hey Ollie, run nslookup in terminal" in out_list
+    assert "Summarize Sales and Organize Files" in out_list
+    assert "summarize_sales_and_organize_files" in out_list
+    assert "Summarize sales and organize files" in out_list
 
     # Test run command in safe sandbox dry-run
-    code_run = cli.main(["run", "lookup_domain_in_terminal", "target_host=yahoo.com", "--data-dir", str(data_dir)])
+    code_run = cli.main(["run", "summarize_sales_and_organize_files", "--data-dir", str(data_dir), "--target-dir", str(target_dir)])
     assert code_run == cli.EXIT_OK
     out_run = capsys.readouterr().out
     assert "HoldMyBeer Execution Receipt" in out_run
     assert "Safe Sandbox Simulation" in out_run
-    assert "yahoo.com" in out_run
     assert "STATUS: VERIFIED" in out_run
+    assert "3 simulated changes" in out_run
 
     # Test run with --json
-    code_json = cli.main(["run", "lookup_domain_in_terminal", "target_host=yahoo.com", "--data-dir", str(data_dir), "--json"])
+    code_json = cli.main(["run", "summarize_sales_and_organize_files", "--data-dir", str(data_dir), "--target-dir", str(target_dir), "--json"])
     assert code_json == cli.EXIT_OK
     out_json = capsys.readouterr().out
     parsed = json.loads(out_json)
     assert parsed["status"] == "verified"
-    assert parsed["bound_parameters"]["target_host"] == "yahoo.com"
+    assert parsed["steps"][0]["summary"]["row_count"] == 2
+    assert parsed["steps"][1]["evidence"] == "Organized 3 file(s) into category folders"
+    assert "images/photo.png" in parsed["before_after_diff"]["files_after"]
+
+    gui_recipe = HybridRecipe(
+        task_id="task-cli-gui-unverified",
+        title="Take Screenshot in Unknown App",
+        app_name="Unknown App",
+        steps=[HybridStep(id="gui", action="browser_or_fixture_action", goal="Take a screenshot", check="Screenshot visible")],
+    )
+    save_hybrid_recipe(store, gui_recipe.task_id, gui_recipe)
+    code_gui = cli.main(["run", gui_recipe.slug(), "--data-dir", str(data_dir), "--json"])
+    assert code_gui == cli.EXIT_ERROR
+    gui_out = capsys.readouterr().out
+    gui_result = json.loads(gui_out)
+    assert gui_result["status"] == "needs_agent_assist"
 
 
 def test_cli_run_missing_target_fails(capsys):
@@ -467,25 +487,25 @@ def test_cli_tui_exits_cleanly_on_empty(tmp_path, capsys):
 
 def test_cli_tui_interactive_flow(tmp_path, monkeypatch, capsys):
     from holdmybeer.app import Store
-    from holdmybeer.hybrid import HybridRecipe, HybridParameter, HybridStep, save_hybrid_recipe
+    from holdmybeer.hybrid import HybridParameter, HybridRecipe, HybridStep, save_hybrid_recipe
     import io
 
     data_dir = tmp_path / "data"
     store = Store(data_dir)
     recipe = HybridRecipe(
         task_id="task-cli-test-2",
-        title="Ping Host In Terminal",
-        app_name="terminal",
+        title="Prefix Invoice Files",
+        app_name="Files",
         parameters=[
-            HybridParameter(name="host", type="string", description="Host to ping", default="127.0.0.1", required=True),
+            HybridParameter(name="prefix", type="string", description="Filename prefix", default="TUI_", required=True),
         ],
         steps=[
             HybridStep(
                 id="s1",
-                action="browser_or_fixture_action",
-                goal="ping host",
-                check="ping completed",
-                params={"command": "ping -c 1 {host}"},
+                action="file_rename_batch",
+                goal="Prefix sample invoice files",
+                check="Renamed invoices appear in the sandbox",
+                params={"pattern": r"^invoice_.*\.txt$", "prefix": "{prefix}"},
             )
         ],
         trigger_phrases=["Hey Ollie, ping host in terminal"],
@@ -504,7 +524,7 @@ def test_cli_tui_interactive_flow(tmp_path, monkeypatch, capsys):
     assert code == cli.EXIT_OK
     out = capsys.readouterr().out
     assert "Terminal Skill Runner" in out
-    assert "Ping Host In Terminal" in out
+    assert "Prefix Invoice Files" in out
     assert "Outcome: VERIFIED" in out
     assert "Goodbye!" in out
 

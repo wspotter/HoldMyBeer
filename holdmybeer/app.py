@@ -658,6 +658,12 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             with app.state.store.connect() as db:
                 task_row = db.execute("SELECT * FROM training_tasks WHERE id=?", (str(task_id),)).fetchone()
                 if task_row is not None:
+                    duplicate = db.execute(
+                        "SELECT 1 FROM training_tasks WHERE app_id=? AND name=? COLLATE NOCASE AND id<>?",
+                        (task_row["app_id"], new_name, str(task_id)),
+                    ).fetchone()
+                    if duplicate is not None:
+                        raise HTTPException(409, "a task with that name already exists in this app")
                     db.execute("UPDATE training_tasks SET name=? WHERE id=?", (new_name, str(task_id)))
                     vrow = db.execute(
                         "SELECT session_id FROM training_versions WHERE task_id=? AND version=?",

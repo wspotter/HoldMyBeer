@@ -640,26 +640,10 @@ def run_hybrid_recipe(
                         })
 
                     else:
-                        caption = str(bound.get("caption", params.get("caption", "Sample draft caption")))
-                        filename = str(bound.get("filename", params.get("filename", "sample-draft.txt")))
-                        receipt_name = str(params.get("receipt_file", "fixture_draft_receipt.json"))
-                        receipt_path = _safe_rel_path(work_dir, receipt_name)
-                        receipt_payload = {
-                            "action": action,
-                            "goal": step.goal,
-                            "target": _interpolate(step.target, bound),
-                            "filename": filename,
-                            "caption": caption,
-                            "verified": True,
-                        }
-                        receipt_path.write_text(json.dumps(receipt_payload, indent=2) + "\n", encoding="utf-8")
-                        step_results.append({
-                            "id": step.id,
-                            "action": action,
-                            "goal": step.goal,
-                            "status": "passed",
-                            "evidence": f"Fixture action '{action}' recorded deterministically for {filename}",
-                        })
+                        raise RuntimeError(
+                            f"Action '{action}' needs a real browser or desktop executor; "
+                            "the sandbox does not execute GUI or terminal actions"
+                        )
 
                 except Exception as exc:
                     reason = str(exc) or type(exc).__name__
@@ -1459,6 +1443,7 @@ def rename_session_task(store: Any, session_id: str, app_name: str, task_name: s
         raise ValueError("App and task name are required")
     store.get_session(sid)
     task_id = sid
+    append_to_task_id = None
     with store.lock:
         with store.connect() as db:
             row = db.execute("SELECT task_id FROM training_versions WHERE session_id=?", (sid,)).fetchone()
@@ -1470,12 +1455,21 @@ def rename_session_task(store: Any, session_id: str, app_name: str, task_name: s
                     db.execute("INSERT INTO training_apps VALUES(?,?,?)", (aid, app_name, _now()))
                 else:
                     aid, app_name = app_row[0], app_row[1]
-                existing_task = db.execute("SELECT id FROM training_tasks WHERE app_id=? AND name=?", (aid, task_name)).fetchone()
+                existing_task = db.execute(
+                    "SELECT id, name FROM training_tasks WHERE app_id=? AND name=? COLLATE NOCASE",
+                    (aid, task_name),
+                ).fetchone()
                 if existing_task is not None and existing_task[0] != task_id:
-                    task_id = existing_task[0]
-                    db.execute("UPDATE training_versions SET task_id=? WHERE session_id=?", (task_id, sid))
+                    append_to_task_id = existing_task[0]
+                    task_name = existing_task[1]
                 else:
                     db.execute("UPDATE training_tasks SET app_id=?, name=? WHERE id=?", (aid, task_name, task_id))
+        if append_to_task_id is not None:
+            from .training import attach_recording_as_next_version
+            attach_recording_as_next_version(store, sid, append_to_task_id)
+            # Resolve the existing task id from the newly attached version row.
+            with store.connect() as db:
+                task_id = db.execute("SELECT task_id FROM training_versions WHERE session_id=?", (sid,)).fetchone()[0]
         answers = dict(store.get_session(sid).get("answers") or {})
         answers["teaching_task_name"] = task_name
         store.update_session(sid, {"title": f"Training · {task_name}", "answers": answers})
@@ -1689,9 +1683,7 @@ def generate_auto_review(
     duration_seconds: float | None = None,
     window_titles: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Automatically inspect a recorded session, synthesize a TeachingProposal + Multiple-Choice Questions, and return ready state."""
-    from .proposals import create_proposal
-
+    """Prepare a saved recording for naming and choice review without claiming inspection or approval."""
     sid = str(session_id)
     sdata = store.get_session(sid)
     answers = dict(sdata.get("answers") or {})
@@ -1738,12 +1730,6 @@ def generate_auto_review(
         finally:
             remux_tmp.unlink(missing_ok=True)
 
-    # Mark recording confirmed if media exists so review/approval never blocks on a manual checkbox
-    has_media = any((store.artifacts / f"{sid}{ext}").is_file() for ext in (".webm", ".mp4"))
-    if has_media and answers.get("teaching_recording_confirmed") != "yes":
-        answers["teaching_recording_confirmed"] = "yes"
-        store.update_session(sid, {"answers": answers})
-
     saved_choices = answers.get("teaching_choice_answers")
     if not isinstance(saved_choices, dict):
         saved_choices = {}
@@ -1763,27 +1749,9 @@ def generate_auto_review(
     goal_desc = answers.get("teaching_goal") or q1_opts.get(chosen_map["q_action"], {}).get("goal_text", f"Perform {task_name}")
     done_desc = answers.get("teaching_done") or q3_opts.get(chosen_map["q_done"], {}).get("done_text", "Output verified cleanly")
 
-    observations = [
-        {"timestamp": 0.2, "text": f"Captured screen workflow for '{task_name}' in {app_name}."},
-        {"timestamp": max(0.8, round(float(duration_seconds or 2.5) * 0.6, 1)), "text": f"Observed action: {goal_desc}."},
-        {"timestamp": max(1.2, round(float(duration_seconds or 2.5), 1)), "text": f"Completion check: {done_desc}."},
-    ]
-
-    procedure = {
-        "revision": 1,
-        "steps": [
-            {"goal": f"Prepare input for {task_name}", "check": "Target input is ready", "action": "select_media", "target": "Media", "input": "filename"},
-            {"goal": goal_desc[:180], "check": "Action parameters populated", "action": "fill", "target": "Caption", "input": "caption"},
-            {"goal": "Execute deterministic workflow step", "check": done_desc[:180], "action": "click", "target": "Save draft"},
-            {"goal": "Verify output in safe sandbox", "check": "All post-execution checks pass", "action": "verify_draft"},
-        ],
-    }
-
+    # Labels and recording duration do not establish what the recording shows.
+    # Save a template for review without inventing observations or a proposal.
     proposal = None
-    try:
-        proposal = create_proposal(store.root, sid, observations, [], procedure)
-    except Exception:
-        pass
 
     recipe = _recipe_from_choices(
         task_id=task_id,
@@ -1812,7 +1780,7 @@ def generate_auto_review(
         "detected_app": naming["detected_app"],
         "app_options": naming["app_options"],
         "task_options": naming["task_options"] or mc["suggested_names"],
-        "observations": observations,
+        "observations": [],
         "multiple_choice_questions": mc["questions"],
         "adaptive_questions": mc.get("adaptive_questions") or mc["questions"],
         "recipe_card": recipe.to_recipe_card(),
@@ -1827,9 +1795,7 @@ def apply_multiple_choice_answers(
     choices: dict[str, str] | None = None,
     run_sandbox: bool = True,
 ) -> dict[str, Any]:
-    """Save the user's clicked multiple-choice answers, approve understanding, update HybridRecipe, and run Safe Sandbox Dry-Run."""
-    from .proposals import create_proposal, teaching_source
-
+    """Save multiple-choice preferences as a reviewable recipe template."""
     sid = str(session_id)
     sdata = store.get_session(sid)
     answers = dict(sdata.get("answers") or {})
@@ -1877,38 +1843,12 @@ def apply_multiple_choice_answers(
     answers["teaching_task_name"] = task_name
     answers["teaching_goal"] = goal_desc
     answers["teaching_done"] = done_desc
-    answers["teaching_recording_confirmed"] = "yes"
     answers["teaching_choice_answers"] = applied_choices
     store.update_session(sid, {"title": f"Training · {task_name}", "answers": answers})
 
-    observations = [
-        {"timestamp": 0.2, "text": f"Confirmed workflow '{task_name}' ({app_name}) via multiple-choice review."},
-        {"timestamp": 1.0, "text": f"Action: {goal_desc}"},
-        {"timestamp": 1.8, "text": f"Done check: {done_desc}"},
-    ]
-    procedure = {
-        "revision": 1,
-        "steps": [
-            {"goal": f"Prepare input for {task_name}", "check": "Target input is ready", "action": "select_media", "target": "Media", "input": "filename"},
-            {"goal": goal_desc[:180], "check": "Action parameters populated", "action": "fill", "target": "Caption", "input": "caption"},
-            {"goal": "Execute deterministic workflow step", "check": done_desc[:180], "action": "click", "target": "Save draft"},
-            {"goal": "Verify output in safe sandbox", "check": "All post-execution checks pass", "action": "verify_draft"},
-        ],
-    }
-
+    # Choices are saved as a template for review; they are not observations,
+    # a verified procedure, or consent to an approval receipt.
     proposal = None
-    try:
-        proposal = create_proposal(store.root, sid, observations, [], procedure)
-        receipt = {
-            "proposal_id": proposal["id"],
-            "consent": True,
-            "approved_at": _now(),
-            **teaching_source(store.root, sid),
-        }
-        target = store.artifacts / f"{sid}.{proposal['id']}.understanding.json"
-        target.write_text(json.dumps(receipt), encoding="utf-8")
-    except Exception:
-        pass
 
     recipe = _recipe_from_choices(
         task_id=task_id,
@@ -1927,7 +1867,8 @@ def apply_multiple_choice_answers(
         sandbox_result = run_hybrid_recipe(recipe, dry_run=True)
 
     return {
-        "status": "approved_and_verified",
+        "status": "saved_for_review",
+        "execution_ready": False,
         "session_id": sid,
         "task_id": task_id,
         "app_name": app_name,

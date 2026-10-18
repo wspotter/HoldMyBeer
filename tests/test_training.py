@@ -77,6 +77,123 @@ def test_duplicate_task_name_is_rejected_per_app(client):
     assert ok.status_code == 200, ok.text
 
 
+def test_quick_record_name_collision_appends_versions_and_preserves_recordings(client):
+    def record(media_bytes):
+        response = client.post("/api/quick-record", json={
+            "app_name": "Editor", "task_name": "Save monthly report",
+        })
+        assert response.status_code == 200, response.text
+        data = response.json()
+        upload = client.post(
+            f"/api/sessions/{data['session_id']}/media",
+            content=media_bytes,
+            headers={"content-type": "video/webm"},
+        )
+        assert upload.status_code == 200, upload.text
+        return data
+
+    first = record(b"recording-one")
+    renamed = client.post(f"/api/sessions/{first['session_id']}/name", json={
+        "app_name": "Editor", "task_name": "Save monthly report v2",
+    })
+    assert renamed.status_code == 200, renamed.text
+    task_id = renamed.json()["task_id"]
+    assert task_id == first["task_id"]
+    assert client.get(f"/api/training/tasks/{task_id}").json()["latest_version"] == 1
+    from holdmybeer.hybrid import HybridRecipe, HybridStep, list_hybrid_recipes, save_hybrid_recipe
+    target_recipe = HybridRecipe(
+        task_id=task_id, title="Save monthly report v2", app_name="Editor",
+        steps=[HybridStep(id="keep", action="file_organize_by_ext", goal="Keep existing target recipe")],
+    )
+    save_hybrid_recipe(client.app.state.store, task_id, target_recipe)
+
+    # Repeating the same name request is idempotent and does not create a version.
+    repeated_name = client.post(f"/api/sessions/{first['session_id']}/name", json={
+        "app_name": "Editor", "task_name": "Save monthly report v2",
+    })
+    assert repeated_name.status_code == 200, repeated_name.text
+    assert len(client.get(f"/api/training/tasks/{task_id}").json()["versions"]) == 1
+
+    second = record(b"recording-two")
+    assert second["task_id"] != task_id
+    review = client.post(f"/api/sessions/{second['session_id']}/auto-review", json={
+        "window_title": "Browser", "duration_seconds": 3,
+    })
+    assert review.status_code == 200, review.text
+    assert set(recipe.task_id for recipe in list_hybrid_recipes(client.app.state.store)) == {task_id, second["task_id"]}
+
+    joined = client.post(f"/api/sessions/{second['session_id']}/name", json={
+        "app_name": "Editor", "task_name": "SAVE MONTHLY REPORT V2",
+    })
+    assert joined.status_code == 200, joined.text
+    assert joined.json()["task_id"] == task_id
+    assert joined.json()["task_name"] == "Save monthly report v2"
+    recipes_after_attach = list_hybrid_recipes(client.app.state.store)
+    assert [recipe.task_id for recipe in recipes_after_attach] == [task_id]
+    assert recipes_after_attach[0].recipe_id == target_recipe.recipe_id
+    assert recipes_after_attach[0].steps[0].id == "keep"
+
+    task = client.get(f"/api/training/tasks/{task_id}").json()
+    assert task["latest_version"] == 2
+    assert [(v["version"], v["session_id"], v["parent_version"]) for v in task["versions"]] == [
+        (1, first["session_id"], None), (2, second["session_id"], 1),
+    ]
+    assert client.get(f"/api/sessions/{first['session_id']}/media").content == b"recording-one"
+    assert client.get(f"/api/sessions/{second['session_id']}/media").content == b"recording-two"
+
+    saved_choices = client.post(f"/api/sessions/{second['session_id']}/answer-choices", json={
+        "choices": {"q_action": "recorded_flow", "q_input": "ask_each_time"},
+        "run_sandbox": False,
+    })
+    assert saved_choices.status_code == 200, saved_choices.text
+    recipes_after_save = list_hybrid_recipes(client.app.state.store)
+    assert [recipe.task_id for recipe in recipes_after_save] == [task_id]
+
+    third = record(b"recording-three")
+    joined_again = client.post(f"/api/sessions/{third['session_id']}/name", json={
+        "app_name": "Editor", "task_name": "Save monthly report v2",
+    })
+    assert joined_again.status_code == 200, joined_again.text
+    assert joined_again.json()["task_id"] == task_id
+    final_task = client.get(f"/api/training/tasks/{task_id}").json()
+    assert final_task["latest_version"] == 3
+    assert [(v["version"], v["session_id"], v["parent_version"]) for v in final_task["versions"]] == [
+        (1, first["session_id"], None),
+        (2, second["session_id"], 1),
+        (3, third["session_id"], 2),
+    ]
+    assert len(client.get("/api/training/apps").json()["apps"][0]["tasks"]) == 1
+    assert client.get(f"/api/sessions/{third['session_id']}/media").content == b"recording-three"
+
+
+def test_quick_rename_rejects_existing_task_name_without_losing_history(client):
+    app = create_app_task(client, "Editor")
+    source = create_task_name_only(client, app["id"], "Draft report")
+    target = create_task_name_only(client, app["id"], "Final report")
+
+    conflict = client.put(f"/api/tasks/{source['id']}/quick-rename", json={"task_name": "Final report"})
+    assert conflict.status_code == 409, conflict.text
+    assert client.get(f"/api/training/tasks/{source['id']}").json()["name"] == "Draft report"
+    assert client.get(f"/api/training/tasks/{source['id']}").json()["versions"] == source["versions"]
+    assert client.get(f"/api/training/tasks/{target['id']}").json()["name"] == "Final report"
+
+
+def test_name_route_refuses_to_move_a_working_provisional_task(client):
+    app = create_app_task(client, "Editor")
+    source = client.post("/api/quick-record", json={"app_name": "Editor", "task_name": "Working draft"}).json()
+    target = client.post("/api/quick-record", json={"app_name": "Editor", "task_name": "Final draft"}).json()
+    with client.app.state.store.connect() as db:
+        db.execute("UPDATE training_tasks SET working_version=1 WHERE id=?", (source["task_id"],))
+
+    refused = client.post(f"/api/sessions/{source['session_id']}/name", json={
+        "app_name": app["name"], "task_name": target["task_name"],
+    })
+    assert refused.status_code == 422, refused.text
+    assert client.get(f"/api/training/tasks/{source['task_id']}").json()["working_version"] == 1
+    assert client.get(f"/api/training/tasks/{source['task_id']}").json()["versions"][0]["session_id"] == source["session_id"]
+    assert client.get(f"/api/training/tasks/{target['task_id']}").json()["versions"][0]["session_id"] == target["session_id"]
+
+
 def test_name_only_approval_blocked_until_recording_confirmed(client):
     app = create_app_task(client)
     task = create_task_name_only(client, app["id"], "Export a PDF")

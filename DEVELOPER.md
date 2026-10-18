@@ -1,5 +1,17 @@
 # Developer guide
 
+## Current simple recording flow
+
+The novice path is intentionally small: record in the browser or import a video, name the app and task, choose **Save recording**, then find the saved item under **Saved tasks**. Easy mode ends there. It does not show a completion or ready-to-run screen. The saved recording is evidence to review, not evidence that the task was understood or executed.
+
+Naming a fresh recording after an existing app/task appends a version atomically, preserving earlier sessions and media. The merge removes its provisional recipe and preserves the target recipe until settings are saved. A source task with a tested working version cannot be merged into another task. Case-insensitive naming retains the existing task's spelling; conflicting quick renames return HTTP 409.
+
+The connected assistant path is explicit: a client can retrieve bounded session data and selected frames through MCP, inspect them, and submit a review-only proposal. The web auto-review endpoint does not infer observations or approval from media metadata. Multiple-choice answers save a template with `status: saved_for_review` and `execution_ready: false`. No automatic assistant dispatch or generic replay of personal recordings is implemented. Keep verification language tied to retained evidence from the specific supported runner.
+
+The hybrid file runner executes only deterministic operations: `file_rename_batch`, `file_organize_by_ext`, and `csv_summary_report`. These operations have real sample checks and sandbox previews; live file changes require explicit approval. Generic browser, GUI, and terminal steps return `needs_agent_assist` and do not claim successful execution. The fixed four-action browser fixture runner remains separate and is the only supported browser procedure trial. Do not describe arbitrary website replay or native pixel understanding as delivered.
+
+The Hermes integration is the `holdmybeer-mcp` stdio server. `holdmybeer connect hermes` is an explicit-home configuration helper; exported skills and MCP configuration do not prove installation, client connection, or tool consumption. The native Hermes plugin scaffold remains status-only.
+
 ## Local teaching engine
 
 FastAPI serves the local app → task training workspace, recording UI, and separate Advanced workshops on loopback:
@@ -33,7 +45,7 @@ Frame inspection requires local `ffmpeg` and `ffprobe`. Decoding uses file/pipe 
 
 Install dependencies in a virtual environment with `python3 -m pip install -e '.[test]'` and install matching Chromium with `python3 -m playwright install chromium`. Runtime dependencies include FastAPI, Uvicorn, Playwright and MCP; tests use pytest/httpx and generated ffmpeg media.
 
-Run `pytest -q`, `node --check web/app.js` and `python -m compileall -q holdmybeer`. Local browser acceptance used Playwright 1.62 with its matching installed browser. CI installs a matching browser for its resolved version.
+Run `pytest -q`, check every shipped root JavaScript asset with `for file in web/*.js; do node --check "$file" || exit 1; done`, and run `python -m compileall -q holdmybeer`. Local browser acceptance used Playwright 1.62 with its matching installed browser. CI installs a matching browser for its resolved version.
 
 `setup.py` copies canonical `web/` assets into `holdmybeer/web/` for wheels; `MANIFEST.in` includes assets in source distributions. The app resolves package assets first and source assets otherwise. `tests/wheel_smoke.py`, run with a separately installed wheel interpreter from outside the source checkout, verifies packaged workspace assets, app/task creation and versioned edit with retained media, an actual reviewed fixture browser trial, and the eight-tool MCP handshake including saved revision retrieval. The native Hermes scaffold and teaching skill remain source-only.
 

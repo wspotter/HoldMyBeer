@@ -20,6 +20,50 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def attach_recording_as_next_version(store, session_id: str, target_task_id: str) -> int:
+    """Attach a fresh, single-version recording to an existing task atomically."""
+    sid, target_id = str(session_id), str(target_task_id)
+    with store.lock, store.connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        source = db.execute(
+            "SELECT task_id, version FROM training_versions WHERE session_id=?", (sid,)
+        ).fetchone()
+        target = db.execute("SELECT * FROM training_tasks WHERE id=?", (target_id,)).fetchone()
+        if source is None or target is None:
+            raise ValueError("recording or target task no longer exists")
+        source_id = source["task_id"]
+        if source_id == target_id:
+            return int(target["latest_version"])
+
+        source_task = db.execute("SELECT * FROM training_tasks WHERE id=?", (source_id,)).fetchone()
+        source_versions = db.execute(
+            "SELECT version FROM training_versions WHERE task_id=? ORDER BY version", (source_id,)
+        ).fetchall()
+        if (source_task is None or source_task["working_version"] is not None or len(source_versions) != 1
+                or source["version"] != source_task["latest_version"]):
+            raise ValueError("only a fresh, unbranched, non-working recording can be added to another task")
+        current_head = db.execute(
+            "SELECT 1 FROM training_versions WHERE task_id=? AND version=?",
+            (target_id, target["latest_version"]),
+        ).fetchone()
+        if current_head is None:
+            raise ValueError("target task history has no current head")
+
+        next_version = int(target["latest_version"]) + 1
+        db.execute(
+            "UPDATE training_versions SET task_id=?, version=?, parent_version=? "
+            "WHERE task_id=? AND version=? AND session_id=?",
+            (target_id, next_version, target["latest_version"], source_id, source["version"], sid),
+        )
+        if db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='hybrid_recipes'"
+        ).fetchone():
+            db.execute("DELETE FROM hybrid_recipes WHERE task_id=?", (source_id,))
+        db.execute("DELETE FROM training_tasks WHERE id=?", (source_id,))
+        db.execute("UPDATE training_tasks SET latest_version=? WHERE id=?", (next_version, target_id))
+        return next_version
+
+
 class AppInput(StrictModel):
     name: str = Field(min_length=1, max_length=100)
 

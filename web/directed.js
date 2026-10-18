@@ -481,7 +481,7 @@
   }
 
   // -------------------------------------------------------------------------
-  // 1-Button Record -> 1-Button Stop -> Instant AI Auto-Review + Multiple Choice
+  // Record -> Stop -> Name and save. Agent review remains a separate step.
   // -------------------------------------------------------------------------
   let ocRecorder = null, ocStream = null, ocChunks = [], ocTimerInterval = null,
       ocStartTime = 0, ocSession = null, ocNativeSessionId = null, ocWindowTitle = "";
@@ -502,7 +502,7 @@
     $("mcModalClose").onclick = () => { if ($("mcModalOverlay")) $("mcModalOverlay").hidden = true; };
   }
 
-  // Wizard: Name it (Step 1) -> Activate / Tuning (Step 2) -> Done (Step 3)
+  // Easy: name and save. Admin: configure a template and inspect tools.
   function renderMultipleChoiceUI(container, sessionId, reviewData) {
     const useModal = Boolean($("mcModalOverlay") && $("mcModalBody") && container?.id === "oneClickReviewCard");
     const target = useModal ? $("mcModalBody") : container;
@@ -556,9 +556,9 @@
     // ---------- Step 1: Name it ----------
     function pageName() {
       currentPageRenderer = pageName;
-      badge("STEP 1 OF 3 · NAME IT");
+      badge(currentMode === "admin" ? "STEP 1 OF 3 · NAME IT" : "NAME YOUR RECORDING");
       target.replaceChildren();
-      const head = add("h2", "What did you just teach me?", target, "hmb-wiz-title");
+      const head = add("h2", "Give this task a name", target, "hmb-wiz-title");
       head.tabIndex = -1;
 
       const grid = add("div", "", target, "mc-top-grid");
@@ -618,7 +618,7 @@
       };
 
       // Task Name
-      const taskLabel = add("label", "Task", fields);
+      const taskLabel = add("label", "Task title", fields);
       taskLabel.htmlFor = "hmbTaskInput";
       const taskInput = document.createElement("input");
       taskInput.id = "hmbTaskInput";
@@ -626,7 +626,7 @@
       taskInput.value = state.task || "";
       taskInput.placeholder = "e.g. Resize image to 1080px, Organize files…";
       fields.append(taskInput);
-      add("small", "Enter a friendly name for this task", fields, "hmb-field-hint");
+      add("small", "Use a short title you’ll recognize later. You’ll review the steps with your assistant.", fields, "hmb-field-hint");
 
       if (currentMode === "admin") {
         const adminBox = add("div", "", fields, "hmb-admin-section");
@@ -634,15 +634,15 @@
         adminBox.innerHTML = `
           <div class="hmb-admin-section-title">⚙️ Admin Metadata</div>
           <div style="font-size:11px; color:#555; line-height:1.6;">
-            <div>Window: <strong>${reviewData.window_title || reviewData.detected_app || "None"}</strong></div>
-            <div>Display: <code>${reviewData.display || "DISPLAY=:10.0"}</code></div>
-            <div>Duration: <strong>${reviewData.duration_seconds || 2.5}s</strong></div>
-            <div>Session ID: <code>${sessionId}</code></div>
+            <div>Window: <strong>${escapeText(reviewData.window_title || reviewData.detected_app || "Not supplied")}</strong></div>
+            <div>Display: <code>${escapeText(reviewData.display || "Not supplied")}</code></div>
+            <div>Duration: <strong>${escapeText(reviewData.duration_seconds || "Not supplied")}</strong></div>
+            <div>Session ID: <code>${escapeText(sessionId)}</code></div>
           </div>
         `;
       }
 
-      const next = add("button", "Looks right →", target, "mc-approve-btn");
+      const next = add("button", currentMode === "admin" ? "Next →" : "Save recording", target, "mc-approve-btn");
       next.id = "hmbNameNext";
       next.type = "button";
       const note = add("p", "", target, "task-status");
@@ -677,7 +677,7 @@
           pageSmartTuning();
         } catch (err) {
           note.textContent = `Could not save the name: ${err.message}`;
-          next.disabled = false; next.textContent = "Looks right →";
+          next.disabled = false; next.textContent = currentMode === "admin" ? "Next →" : "Save recording";
         }
       };
 
@@ -686,75 +686,49 @@
 
     // ---------- Step 2: Smart Tuning / Activation ----------
     function pageSmartTuning() {
+      if (currentMode !== "admin") { finish(); return; }
       currentPageRenderer = pageSmartTuning;
-      const isAdmin = currentMode === "admin";
-      badge(isAdmin ? "STEP 2 OF 3 · ACTIVATE (ADMIN)" : "STEP 2 OF 3 · ACTIVATE");
+      badge("STEP 2 OF 3 · TEMPLATE SETTINGS");
       target.replaceChildren();
 
       const top = add("div", "", target);
       top.style.marginBottom = "8px";
-      const heading = add("h2", isAdmin ? "Task Configuration & Safety Controls" : "Ready to activate your task?", top, "hmb-wiz-title");
+      const heading = add("h2", "Task template settings", top, "hmb-wiz-title");
       heading.tabIndex = -1;
       add("p", `${state.task} in ${state.app}`, top, "eyebrow");
 
-      if (!isAdmin) {
-        // Simple Mode: 3 Smart Defaults Summary
-        const summary = add("div", "", target, "hmb-simple-finish-card");
-        summary.style.padding = "14px 16px";
-        summary.style.margin = "10px 0";
-        summary.innerHTML = `
-          <div style="font-size:12px; font-weight:700; color:#5c584c; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">
-            ⚡ Smart Replay Defaults
-          </div>
-          <div style="display:flex; flex-direction:column; gap:8px;">
-            <div style="display:flex; align-items:center; gap:8px; font-size:13px;">
-              <span style="font-size:16px;">⚡</span>
-              <div><strong>Exact Replay:</strong> Always repeats what you demonstrated</div>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px; font-size:13px;">
-              <span style="font-size:16px;">👁️</span>
-              <div><strong>Automatic Verification:</strong> Confirms success when action completes</div>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px; font-size:13px;">
-              <span style="font-size:16px;">🛡️</span>
-              <div><strong>Safe Sandbox First:</strong> Verifies steps before touching real files</div>
-            </div>
-          </div>
-        `;
-      } else {
-        // Admin Mode: Full Tuning Grid
-        const grid = add("div", "", target, "hmb-tune-grid");
-        const tuneRows = [
-          {
-            icon: "⚡", title: "Input & Target", desc: "Does this repeat the exact same actions, or need input each time?",
-            options: [
-              { id: "same_target", label: "Exact Replay", desc: "Always repeat what was recorded" },
-              { id: "ask_each_time", label: "Ask for Input", desc: "Ask for target/parameters before running" },
-            ],
-            current: state.choices.q_input,
-            onSelect: val => { state.choices.q_input = val; },
-          },
-          {
-            icon: "👁️", title: "Completion Check", desc: "How does your assistant confirm the task succeeded?",
-            options: [
-              { id: "window_minimized", label: "App Completes", desc: "When window closes or action completes" },
-              { id: "verified_output", label: "Receipt / File Saved", desc: "When verified output file exists" },
-            ],
-            current: state.choices.q_done,
-            onSelect: val => { state.choices.q_done = val; },
-          },
-          {
-            icon: "🛡️", title: "Safety & Sandboxing", desc: "Protect real system files before execution",
-            options: [
-              { id: "sandbox_first", label: "Safe Sandbox First", desc: "Simulate and verify before real changes" },
-              { id: "pause_immediately", label: "Pause & Ask Me", desc: "Always confirm before running" },
-            ],
-            current: state.choices.q_safety,
-            onSelect: val => { state.choices.q_safety = val; },
-          },
-        ];
-        for (const rowConfig of tuneRows) grid.append(createTuneRow(rowConfig));
-      }
+      // Admin Mode: Full Tuning Grid
+      const grid = add("div", "", target, "hmb-tune-grid");
+      const tuneRows = [
+        {
+          icon: "⚡", title: "Input & Target", desc: "Save your preference for an assistant to review.",
+          options: [
+            { id: "same_target", label: "Same Target", desc: "Request the same target each time" },
+            { id: "ask_each_time", label: "Ask for Input", desc: "Ask for target/parameters before running" },
+          ],
+          current: state.choices.q_input,
+          onSelect: val => { state.choices.q_input = val; },
+        },
+        {
+          icon: "👁️", title: "Completion Check", desc: "What result should the assistant check?",
+          options: [
+            { id: "window_minimized", label: "App Completes", desc: "When window closes or action completes" },
+            { id: "verified_output", label: "Receipt / File Saved", desc: "When verified output file exists" },
+          ],
+          current: state.choices.q_done,
+          onSelect: val => { state.choices.q_done = val; },
+        },
+        {
+          icon: "🛡️", title: "Safety & Sandboxing", desc: "Save a preference. This does not authorize a live run.",
+          options: [
+            { id: "sandbox_first", label: "Safe Sandbox First", desc: "Check supported file actions with samples" },
+            { id: "pause_immediately", label: "Pause & Ask Me", desc: "Always confirm before running" },
+          ],
+          current: state.choices.q_safety,
+          onSelect: val => { state.choices.q_safety = val; },
+        },
+      ];
+      for (const rowConfig of tuneRows) grid.append(createTuneRow(rowConfig));
 
       // Step Navigation
       const nav = add("div", "", target, "mc-step-nav");
@@ -762,16 +736,16 @@
       const back = add("button", "← Back to naming", nav, "quiet");
       back.type = "button"; back.onclick = pageName;
 
-      const finishBtn = add("button", "Looks Great — Save & Activate ✨", nav, "primary");
+      const finishBtn = add("button", "Save task settings", nav, "primary");
       finishBtn.id = "oneClickApproveBtn"; finishBtn.type = "button";
       finishBtn.style.padding = "10px 22px"; finishBtn.style.fontSize = "15px";
       finishBtn.onclick = finish;
 
       const toggleWrap = add("div", "", target);
       toggleWrap.style.textAlign = "center"; toggleWrap.style.marginTop = "10px";
-      const toggleBtn = add("button", isAdmin ? "🐣 Switch to Simple Mode" : "⚙️ Need custom settings? Switch to Admin Mode", toggleWrap, "hmb-admin-toggle");
+      const toggleBtn = add("button", "Switch to Simple Mode", toggleWrap, "hmb-admin-toggle");
       toggleBtn.type = "button";
-      toggleBtn.onclick = () => setMode(isAdmin ? "easy" : "admin");
+      toggleBtn.onclick = () => setMode("easy");
 
       heading.focus();
     }
@@ -798,17 +772,24 @@
       return row;
     }
 
-    // ---------- Step 3: Finish & Celebration (Simple + Admin) ----------
+    // ---------- Admin tools after saving ----------
     let finishData = null;
+
+    function returnToSaved() {
+      if ($("mcModalOverlay")) $("mcModalOverlay").hidden = true;
+      container.hidden = true;
+      window.hmbShowView?.("saved");
+      toast("Your recording is saved.");
+    }
 
     async function finish() {
       badge("STEP 3 OF 3 · SAVING");
       target.replaceChildren();
-      add("h2", "Activating your task…", target, "hmb-wiz-title");
+      add("h2", "Saving your recording…", target, "hmb-wiz-title");
       try {
         finishData = await request(`/api/sessions/${sessionId}/answer-choices`, {
           method: "POST",
-          body: JSON.stringify({selected_name: state.task, choices: state.choices, run_sandbox: true}),
+          body: JSON.stringify({selected_name: state.task, choices: state.choices, run_sandbox: false}),
         });
       } catch (err) {
         target.replaceChildren();
@@ -819,127 +800,74 @@
         return;
       }
       state.taskId = finishData.task_id || state.taskId;
-      renderFinishPage();
+      if (currentMode === "admin") renderFinishPage();
+      else returnToSaved();
     }
+
+    const escapeText = value => { const node = document.createElement("span"); node.textContent = value; return node.innerHTML; };
 
     function renderFinishPage() {
       currentPageRenderer = renderFinishPage;
       const isAdmin = currentMode === "admin";
-      badge(isAdmin ? "STEP 3 OF 3 · ADMIN INTEGRATION" : "STEP 3 OF 3 · COMPLETE");
+      if (!isAdmin) { returnToSaved(); return; }
+      badge("ADMIN · TASK TOOLS");
       target.replaceChildren();
 
       const res = finishData || {};
-      const cleanTask = (res.task_name || state.task).replace(/\s*#\d+\b/g, "").trim();
+      const cleanTask = (res.task_name || state.task).trim();
       const cleanApp = (res.app_name || state.app || "the app").trim();
-      const slug = (cleanTask.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")) || "my-task";
 
-      if (!isAdmin) {
-        // Simple Mode: Celebration hero card + 1-click sandbox run + CLI hint
-        const simpleCard = add("div", "", target, "hmb-simple-finish-card");
-        simpleCard.innerHTML = `
-          <div class="hmb-finish-hero">
-            <span class="hmb-finish-icon">🎉</span>
-            <div>
-              <h2 class="hmb-wiz-title" style="margin:0 0 4px 0;">Task Ready to Run!</h2>
-              <p class="eyebrow" style="margin:0;"><strong>${cleanTask}</strong> in <strong>${cleanApp}</strong></p>
-            </div>
-          </div>
-          <div class="hmb-finish-badge-row">
-            <span class="hmb-status-pill green">● Ready for Execution</span>
-            <span class="hmb-status-pill">⚡ 1-Click Replay</span>
-            <span class="hmb-status-pill">🛡️ Safe Sandbox</span>
-          </div>
-          <button id="hmbRunNowBtn" type="button" class="primary hmb-run-big-btn">
-            ▶ Run Task Now (Safe Sandbox)
-          </button>
-          <div id="hmbSimpleReceipt" class="hmb-receipt-box" style="display:none; margin-top:12px;"></div>
-          <div class="hmb-cli-hint">
-            <span>Terminal: <code>holdmybeer run ${slug}</code></span>
-            <button type="button" class="quiet hmb-copy-mini-btn" id="hmbCliCopyBtn">📋 Copy</button>
-          </div>
-        `;
-
-        const runBtn = simpleCard.querySelector("#hmbRunNowBtn");
-        const receipt = simpleCard.querySelector("#hmbSimpleReceipt");
-        const copyBtn = simpleCard.querySelector("#hmbCliCopyBtn");
-
-        copyBtn.onclick = async () => {
-          try {
-            await navigator.clipboard.writeText(`holdmybeer run ${slug}`);
-            copyBtn.textContent = "Copied ✓";
-            setTimeout(() => { copyBtn.textContent = "📋 Copy"; }, 2000);
-          } catch {
-            copyBtn.textContent = "Select & copy";
+      async function runSandbox({btn, receipt, parameters, successTitle, successBody, failTitle, idleText}) {
+        btn.disabled = true;
+        btn.textContent = "Checking sample files…";
+        receipt.style.display = "block";
+        receipt.innerHTML = `<span style="color:#777;">Checking a template with temporary sample files…</span>`;
+        try {
+          const run = await request(`/api/tasks/${encodeURIComponent(state.taskId)}/hybrid-run`, {
+            method: "POST", body: JSON.stringify({dry_run: true, parameters: parameters || {}}),
+          });
+          if (run.status === "verified") {
+            const count = (run.steps || []).length || 1;
+            receipt.innerHTML = `
+              <div style="color:#2d6914; font-weight:700; margin-bottom:4px;">✔ ${successTitle(count)}</div>
+              ${successBody}
+            `;
+          } else {
+            const observed = run.diagnostic_snapshot?.observed_state;
+            const reason = typeof observed === "string" ? observed : observed?.reason;
+            receipt.innerHTML = `
+              <div style="color:#b25900; font-weight:700;">⚠️ ${failTitle}</div>
+              <div style="font-size:12px; color:#444;">${escapeText(reason || "This task needs assistant review before it can run.")}</div>
+            `;
           }
-        };
-
-        async function runSandbox({btn, receipt, parameters, successTitle, successBody, failTitle, idleText}) {
-          btn.disabled = true;
-          btn.textContent = "Running in Safe Sandbox…";
-          receipt.style.display = "block";
-          receipt.innerHTML = `<span style="color:#777;">⏳ Running isolated sandbox simulation…</span>`;
-          try {
-            const run = await request(`/api/tasks/${encodeURIComponent(state.taskId)}/hybrid-run`, {
-              method: "POST", body: JSON.stringify({dry_run: true, parameters: parameters || {}}),
-            });
-            if (run.status === "verified") {
-              const count = (run.steps || []).length || 1;
-              receipt.innerHTML = `
-                <div style="color:#2d6914; font-weight:700; margin-bottom:4px;">✔ ${successTitle(count)}</div>
-                ${successBody}
-              `;
-            } else {
-              receipt.innerHTML = `
-                <div style="color:#b25900; font-weight:700;">⚠️ ${failTitle}</div>
-                <div style="font-size:12px; color:#444;">${run.diagnostic_snapshot?.observed_state || "Action completed with warnings."}</div>
-              `;
-            }
-          } catch (err) {
-            receipt.innerHTML = `<span style="color:#a1261d;">❌ Could not run: ${err.message}</span>`;
-          } finally {
-            btn.disabled = false;
-            btn.textContent = idleText;
-          }
+        } catch (err) {
+          receipt.innerHTML = `<span style="color:#a1261d;">❌ Could not run: ${escapeText(err.message)}</span>`;
+        } finally {
+          btn.disabled = false;
+          btn.textContent = idleText;
         }
+      }
 
-        runBtn.onclick = () => runSandbox({
-          btn: runBtn,
-          receipt,
-          parameters: {},
-          successTitle: count => `Ran Successfully (${count} step${count === 1 ? "" : "s"} verified)`,
-          successBody: `<div style="font-size:12px; color:#444;">Task executed safely in background sandbox. Real files untouched.</div>`,
-          failTitle: "Finished with Note",
-          idleText: "▶ Run Task Again",
-        });
 
-        // Hidden backward-compatibility elements for tests
-        const compat = add("div", "", target);
-        compat.style.display = "none";
-        compat.innerHTML = `
-          <div id="oneClickResultBox">${res.say_this || ""}</div>
-          <input id="hmbTryInput" value="${res.try_param?.default || ""}" />
-          <button id="hmbTryBtn" type="button"></button>
-          <div id="hmbTryResult"></div>
-        `;
-      } else {
+      {
         // Admin Mode: Technical admin metadata, agent connectors, parameter test drive
         const headBox = add("div", "", target);
         headBox.style.marginBottom = "10px";
         const title = add("h2", `🛠️ Task Administration: ${cleanTask}`, headBox, "hmb-wiz-title");
         title.tabIndex = -1;
-        add("p", `Task ID: ${state.taskId} · App: ${cleanApp} · Engine: Hybrid Deterministic Replay`, headBox, "eyebrow");
+        add("p", `Task ID: ${state.taskId} · App: ${cleanApp} · Unverified recipe template`, headBox, "eyebrow");
 
-        // Connected AI Agent Integrations
+        // Agent connection options
         const agentSection = add("div", "", target, "hmb-admin-section");
         agentSection.innerHTML = `
-          <div class="hmb-admin-section-title">🤖 Connected AI Agent Integrations</div>
+          <div class="hmb-admin-section-title">🤖 Agent connection options</div>
           <div class="hmb-agent-row">
             <div><strong>Claude Code / Desktop</strong><br><small style="color:#666;">MCP dynamic tool</small></div>
             <code>claude mcp add holdmybeer uvx holdmybeer mcp</code>
           </div>
           <div class="hmb-agent-row">
             <div><strong>Hermes / Ollie</strong><br><small style="color:#666;">Autonomous worker tool</small></div>
-            <code>hmb_workflow_${slug}</code>
+            <code>${escapeText(res.tool_name || "Reconnect your client to discover tools")}</code>
           </div>
           <div class="hmb-agent-row">
             <div><strong>OpenAI / Codex API</strong><br><small style="color:#666;">JSON Schema endpoint</small></div>
@@ -990,7 +918,7 @@
         }
         simRow.append(tryInput);
 
-        const simBtn = add("button", "▶ Run Test Simulation", simRow, "primary");
+        const simBtn = add("button", "Check with sample files", simRow, "primary");
         simBtn.id = "hmbTryBtn"; simBtn.type = "button";
         simBtn.style.padding = "8px 18px"; simBtn.style.whiteSpace = "nowrap";
 
@@ -1005,13 +933,13 @@
             btn: simBtn,
             receipt: simReceipt,
             parameters,
-            successTitle: count => `Test Simulation Passed (${count} step${count === 1 ? "" : "s"} verified)`,
+            successTitle: count => `Sample check passed (${count} step${count === 1 ? "" : "s"})`,
             successBody: `
-              <div style="font-size:11px; color:#555;">Target: <strong>${targetVal}</strong></div>
-              <div style="font-size:11px; color:#555;">Sandbox: Real files and desktop untouched. Safe for live use.</div>
+              <div style="font-size:11px; color:#555;">Target: <strong>${escapeText(targetVal)}</strong></div>
+              <div style="font-size:11px; color:#555;">Sample files only. This does not test the recorded app or authorize live execution.</div>
             `,
             failTitle: "Needs Attention",
-            idleText: "▶ Run Test Simulation",
+            idleText: "Check with sample files",
           });
         };
 
@@ -1022,8 +950,8 @@
           speechCard.style.marginTop = "10px";
           speechCard.innerHTML = `
             <div>
-              <span style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#4a6828; font-weight:700; display:block; margin-bottom:2px;">🗣️ Natural Voice Trigger</span>
-              <strong>“${res.say_this}”</strong>
+              <span style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#4a6828; font-weight:700; display:block; margin-bottom:2px;">Suggested phrase (connection required)</span>
+              <strong>“${escapeText(res.say_this)}”</strong>
             </div>
           `;
         }
@@ -1053,16 +981,16 @@
       toggleWrap.style.textAlign = "center"; toggleWrap.style.marginTop = "12px";
       const toggleBtn = add("button", isAdmin ? "🐣 Switch to Simple Mode" : "⚙️ View Agent MCP Configs & Admin Tools", toggleWrap, "hmb-admin-toggle");
       toggleBtn.type = "button";
-      toggleBtn.onclick = () => setMode(isAdmin ? "easy" : "admin");
+      toggleBtn.onclick = () => setMode("easy");
 
-      ocStatus(`Learned “${cleanTask}”.`);
+      ocStatus(`Saved “${cleanTask}” for review.`);
     }
 
     pageName();
   }
 
   async function processOneClickBlob(blob, windowTitle, durationSec) {
-    ocStatus("Saving recording & opening AI Review popup…");
+    ocStatus("Saving your recording…");
     try {
       if (!ocSession) {
         const qr = await request("/api/quick-record", {
@@ -1081,12 +1009,12 @@
           duration_seconds: durationSec || 2.0,
         }),
       });
-      ocStatus("AI review ready.");
+      ocStatus("Recording saved. Give it a name.");
       if ($("oneClickReviewCard")) {
         renderMultipleChoiceUI($("oneClickReviewCard"), ocSession.id, reviewData);
       }
     } catch (err) {
-      ocStatus(`Auto-review failed: ${err.message}`);
+      ocStatus(`Could not prepare recording: ${err.message}`);
     }
   }
 
@@ -1102,19 +1030,6 @@
     }, 500);
   }
 
-  async function triggerInstantAutoReview() {
-    stopOcStream();
-    setOcRecordingUI(false);
-    const qr = await request("/api/quick-record", {method: "POST", body: JSON.stringify({})});
-    ocSession = qr.session;
-    const reviewData = await request(`/api/sessions/${ocSession.id}/auto-review`, {
-      method: "POST", body: JSON.stringify({duration_seconds: 2.5}),
-    });
-    if ($("oneClickReviewCard")) {
-      renderMultipleChoiceUI($("oneClickReviewCard"), ocSession.id, reviewData);
-    }
-  }
-
   if ($("oneClickRecordBtn")) {
     $("oneClickRecordBtn").onclick = async () => {
       if (ocRecorder?.state === "recording" || ocNativeSessionId) return;
@@ -1128,12 +1043,13 @@
           return;
         }
       } catch {
-        /* Fall back to browser capture or instant review */
+        /* Fall back to the browser screen picker. */
       }
 
       try {
         if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder) {
-          return await triggerInstantAutoReview();
+          ocStatus("Screen recording is unavailable here. Open HoldMyBeer on localhost or import a video file.");
+          return;
         }
         ocStream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: false});
         const vTrack = ocStream.getVideoTracks()[0];
@@ -1163,7 +1079,9 @@
         setOcRecordingUI(true);
         ocStatus("Recording live — perform your task, then click Stop Recording.");
       } catch {
-        await triggerInstantAutoReview();
+        stopOcStream();
+        setOcRecordingUI(false);
+        ocStatus("Recording wasn’t started. Choose Start Recording to try again, or import a video file.");
       }
     };
   }
@@ -1175,12 +1093,12 @@
         ocNativeSessionId = null;
         stopOcStream();
         setOcRecordingUI(false);
-        ocStatus("Stopping recording & opening AI Review popup…");
+        ocStatus("Saving your recording…");
         try {
           const reviewData = await request(`/api/native-record/${sid}/stop`, {
             method: "POST", body: JSON.stringify({}),
           });
-          ocStatus("AI review ready.");
+          ocStatus("Recording saved. Give it a name.");
           if ($("oneClickReviewCard")) {
             renderMultipleChoiceUI($("oneClickReviewCard"), sid, reviewData);
           }

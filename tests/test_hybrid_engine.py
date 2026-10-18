@@ -206,6 +206,32 @@ def test_uncertainty_pauses_cleanly_with_diagnostic_snapshot(tmp_path):
     assert "missing_orders.csv" in snap["suggested_recovery_prompt"]
 
 
+@pytest.mark.parametrize("action", ["browser_or_fixture_action", "fixture_action", "click", "fill", "upload", "select_media", "verify_draft"])
+def test_non_deterministic_actions_need_assistance_without_fake_receipt(tmp_path, action):
+    workspace = tmp_path / "target"
+    workspace.mkdir()
+    recipe = HybridRecipe(
+        task_id=f"task-{action}",
+        title="Run an unverified action",
+        app_name="Unknown App",
+        steps=[HybridStep(
+            id="unverified",
+            action=action,
+            goal="Perform the selected app or terminal action",
+            check="Action completed",
+            params={"receipt_file": "workflow_receipt.json"},
+        )],
+        assertions=[HybridAssertion(type="non_empty_output", target="workflow_receipt.json", phase="post")],
+    )
+
+    result = run_hybrid_recipe(recipe, target_dir=workspace, dry_run=True)
+
+    assert result["status"] == "needs_agent_assist"
+    assert result["steps"][0]["status"] == "needs_agent_assist"
+    assert "workflow_receipt.json" not in result["before_after_diff"]["files_after"]
+    assert not (workspace / "workflow_receipt.json").exists()
+
+
 def test_api_hybrid_run_endpoint_enforces_sandbox_default_and_approval_gate(client, tmp_path):
     app_resp = client.post("/api/training/apps", json={"name": "Backoffice"}).json()
     task_resp = client.post(

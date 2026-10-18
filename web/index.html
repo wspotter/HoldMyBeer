@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>HoldMyBeer · Start here</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/style.css?v=20261018f" />
+    <link rel="stylesheet" href="/style.css?v=20261018j" />
   </head>
   <body>
     <header class="app-header">
@@ -22,9 +22,9 @@
         <h1 id="welcomeTitle" tabindex="-1">Teach an assistant<br />your repeat tasks.</h1>
         <p class="welcome-copy">Teach an assistant one task at a time. Each app keeps its own tasks, recordings, and reviewed versions.</p>
         <section class="first-task hero-one-click" aria-labelledby="directedTitle">
-          <span class="task-label">1-CLICK RECORD · AI AUTO-REVIEW · MULTIPLE CHOICE</span>
+          <span class="task-label">RECORD → NAME → REVIEW</span>
           <h2 id="directedTitle">Just hit Record and do the task.</h2>
-          <p>No forms or typing. Click Record, perform your task, and click Stop — the AI auto-reviews your recording and asks quick multiple-choice questions.</p>
+          <p>Click Start Recording, show one complete task, then stop and give it a name. Your assistant can review the saved example before you try repeating it.</p>
           <div class="hero-record-controls">
             <button class="hero-record-btn" id="oneClickRecordBtn" type="button">
               <span class="hero-dot"></span> Start Recording
@@ -35,8 +35,7 @@
           </div>
           <div class="hero-secondary-actions">
             <label class="file-button quiet" id="oneClickImportLabel">Import video file<input id="oneClickImportInput" type="file" accept="video/webm,video/mp4" hidden /></label>
-            <button class="quiet" id="quickRecordBegin" type="button">🍺 Hold My Beer (Instant Record)</button>
-            <button class="quiet" id="directedBegin" type="button">Show me how</button>
+            <button class="quiet" id="directedBegin" type="button">Choose app &amp; task first</button>
           </div>
           <p id="oneClickStatus" class="task-status" role="status" aria-live="polite">Ready — click Start Recording and perform your task once.</p>
           <video id="oneClickVideo" controls playsinline hidden></video>
@@ -199,7 +198,7 @@
         </div>
       </aside>
       <main>
-        <div class="advanced-intro"><p class="eyebrow">ADVANCED · EXPERIMENTAL</p><h2>Record and review a task</h2><p>Capture what you do and review it with a connected AI assistant. A recording does not turn into a runnable task automatically.</p><button class="quiet" id="guidedStart" type="button">Open the detailed practice walkthrough</button><div class="advanced-example-links"><button class="quiet" id="demoBegin" type="button">Practice draft example</button><button class="quiet" id="openBrief" type="button">GitHub issues example</button></div></div>
+        <div class="advanced-intro"><p class="eyebrow">ADVANCED · EXPERIMENTAL</p><h2>Record and review a task</h2><p>Capture what you do and review it with a connected AI assistant. A recording does not turn into a runnable task automatically.</p><button class="quiet" id="guidedStart" type="button">Open the detailed practice walkthrough</button><div class="advanced-example-links"><button class="quiet" id="demoBegin" type="button">Practice draft example</button><button class="quiet" id="openBrief" type="button">GitHub issues example</button><button class="quiet" id="quickRecordBegin" type="button">🍺 Hold My Beer (Instant Record)</button></div></div>
         <section id="guidedDemo" class="guided-demo" aria-labelledby="guidedTitle" hidden>
           <p class="eyebrow">FIXTURE-ONLY FIRST USE</p>
           <h2 id="guidedTitle">A new practice workflow, kept separate.</h2>
@@ -428,13 +427,13 @@ A fresh example, prepared for review.</textarea
     </div>
     </section>
     
-    <div id="mcModalOverlay" class="mc-modal-overlay" hidden role="dialog" aria-modal="true" aria-label="AI Review & Multiple-Choice Setup">
+    <div id="mcModalOverlay" class="mc-modal-overlay" hidden role="dialog" aria-modal="true" aria-label="Name your recording">
       <div class="mc-modal-box">
         <div class="mc-modal-top">
           <span id="mcStepBadge" class="eyebrow">STEP 1 OF 3 · NAME IT</span>
           <div class="hmb-mode-toggle-group" id="hmbModalModeGroup" role="group" aria-label="Interface Mode">
-            <button type="button" id="hmbModeEasyBtn" class="hmb-mode-btn active" title="Simple mode (clean, easy & zero jargon)">🐣 Simple</button>
-            <button type="button" id="hmbModeAdminBtn" class="hmb-mode-btn" title="Admin mode (full technical controls, connectors & sandbox options)">⚙️ Admin</button>
+            <button type="button" id="hmbModeEasyBtn" class="hmb-mode-btn active" title="Simple mode (clean, easy & zero jargon)">Simple</button>
+            <button type="button" id="hmbModeAdminBtn" class="hmb-mode-btn" title="Admin mode (full technical controls, connectors & sandbox options)">Admin</button>
           </div>
           <button type="button" id="mcModalClose" class="quiet mc-close-btn">✕ Close</button>
         </div>
@@ -444,8 +443,8 @@ A fresh example, prepared for review.</textarea
     <div id="toast" role="status" aria-live="polite"></div>
     <script src="/app.js?v=20261017f"></script>
     <script src="/simple.js?v=20261017f"></script>
-    <script src="/training.js?v=20261017f"></script>
-    <script src="/directed.js?v=20261018f"></script>
+    <script src="/training.js?v=20261018j"></script>
+    <script src="/directed.js?v=20261018j"></script>
     <script src="/briefs.js?v=20261017f"></script>
   </body>
 </html>

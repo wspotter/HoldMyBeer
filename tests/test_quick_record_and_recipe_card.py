@@ -73,9 +73,11 @@ def test_browser_instant_record_button_opens_record_stage_with_recipe_card_and_s
         try:
             page = browser.new_page()
             page.goto(base)
-            # Both the classic "Show me how" button and the 1-click "🍺 Hold My Beer (Instant Record)" button exist
-            expect(page.get_by_role("button", name="Show me how", exact=True)).to_be_visible()
+            # Instant Record lives in Advanced so first-use users see one clear recording path.
+            expect(page.get_by_role("button", name="Choose app & task first", exact=True)).to_be_visible()
             instant_btn = page.locator("#quickRecordBegin")
+            expect(instant_btn).to_be_hidden()
+            page.get_by_role("button", name="Advanced", exact=True).click()
             expect(instant_btn).to_be_visible()
             expect(instant_btn).to_contain_text("Hold My Beer (Instant Record)")
 
@@ -124,6 +126,8 @@ def test_zero_typing_auto_review_and_multiple_choice_answers(tmp_path):
     assert rev_data["status"] == "ready"
     assert len(rev_data["multiple_choice_questions"]) == 4
     assert rev_data["multiple_choice_questions"][0]["selected"] == "terminal_cmd"
+    assert rev_data["observations"] == []
+    assert rev_data["proposal"] is None
 
     # 3. Tap multiple-choice answers and confirm with sandbox dry-run
     ans = client.post(
@@ -141,6 +145,9 @@ def test_zero_typing_auto_review_and_multiple_choice_answers(tmp_path):
     )
     assert ans.status_code == 200
     ans_data = ans.json()
-    assert ans_data["status"] == "approved_and_verified"
+    assert ans_data["status"] == "saved_for_review"
+    assert ans_data["execution_ready"] is False
     assert ans_data["task_name"] == "DNS Lookup (nslookup)"
-    assert ans_data["sandbox_result"]["status"] == "verified"
+    assert ans_data["proposal"] is None
+    assert ans_data["sandbox_result"]["status"] == "needs_agent_assist"
+    assert not list((tmp_path / "artifacts").glob("*.understanding.json"))

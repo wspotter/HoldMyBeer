@@ -1289,31 +1289,18 @@ h1:focus, h2:focus { outline: none; }
   border-radius: 4px;
 }
 
-/* App Picker & Field Hints */
-.hmb-app-picker {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+/* App Dropdown & Field Hints */
+#hmbAppInput {
   width: 100%;
+  cursor: text;
 }
-.hmb-app-picker input {
-  flex: 1;
-  min-width: 0;
-}
-.hmb-app-select {
-  flex-shrink: 0;
-  max-width: 180px;
-  padding: 8px 10px;
-  font-size: 13px;
-  font-weight: 600;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: #ffffff;
-  color: #3b372e;
+#hmbAppInput::-webkit-calendar-picker-indicator {
+  opacity: 0.65;
   cursor: pointer;
+  font-size: 14px;
 }
-.hmb-app-select:focus {
-  outline: 2px solid var(--primary, #3b5a27);
+#hmbAppInput::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
 }
 .hmb-field-hint {
   color: var(--muted);

@@ -495,37 +495,28 @@
       const fields = document.createElement("div");
       fields.className = "hmb-fields";
 
-      // 1. App Picker (Dropdown of previous apps + text input to write a new one)
+      // 1. App Name (Single dropdown box with previous apps + type new)
       const appLabel = add("label", "App", fields); appLabel.htmlFor = "hmbAppInput";
-      const appPicker = document.createElement("div");
-      appPicker.className = "hmb-app-picker";
 
       const appInput = document.createElement("input");
       appInput.id = "hmbAppInput";
       appInput.setAttribute("list", "hmbAppList");
       appInput.maxLength = 100;
       appInput.value = state.app || "";
-      appInput.placeholder = "Select an app or write a new one…";
-      appPicker.append(appInput);
+      appInput.placeholder = "Choose an app, or type a new one…";
+      appInput.autocomplete = "off";
+      fields.append(appInput);
 
       const datalist = document.createElement("datalist");
       datalist.id = "hmbAppList";
-      appPicker.append(datalist);
-
-      const appSelect = document.createElement("select");
-      appSelect.id = "hmbAppSelect";
-      appSelect.className = "hmb-app-select";
-      appSelect.setAttribute("aria-label", "Previous app names");
-      appPicker.append(appSelect);
-
-      fields.append(appPicker);
+      fields.append(datalist);
 
       const appHint = document.createElement("small");
       appHint.className = "hmb-field-hint";
       appHint.textContent = "Enter the name of your app";
       fields.append(appHint);
 
-      // Populate previous app names
+      // Populate previous app names into datalist
       let appOptions = Array.from(new Set([
         ...(reviewData.app_options || []),
         ...(reviewData.detected_app ? [reviewData.detected_app] : []),
@@ -533,31 +524,10 @@
 
       function populateAppDropdown(options) {
         datalist.replaceChildren();
-        appSelect.replaceChildren();
-
-        const defaultOpt = document.createElement("option");
-        defaultOpt.value = "";
-        defaultOpt.textContent = "Choose previous app… ▼";
-        appSelect.append(defaultOpt);
-
         for (const opt of options) {
           const dOpt = document.createElement("option");
           dOpt.value = opt;
           datalist.append(dOpt);
-
-          const sOpt = document.createElement("option");
-          sOpt.value = opt;
-          sOpt.textContent = opt;
-          appSelect.append(sOpt);
-        }
-
-        const newOpt = document.createElement("option");
-        newOpt.value = "__new__";
-        newOpt.textContent = "✏️ Or write a new app name…";
-        appSelect.append(newOpt);
-
-        if (state.app && options.includes(state.app)) {
-          appSelect.value = state.app;
         }
       }
       populateAppDropdown(appOptions);
@@ -576,16 +546,11 @@
         }
       }).catch(() => {});
 
-      appSelect.onchange = () => {
-        if (appSelect.value === "__new__") {
-          appInput.value = "";
-          appInput.focus();
-        } else if (appSelect.value) {
-          appInput.value = appSelect.value;
-          state.app = appSelect.value;
-          taskInput.focus();
+      // Open the dropdown list on click
+      appInput.onclick = () => {
+        if (appInput.showPicker) {
+          try { appInput.showPicker(); } catch {}
         }
-        validate();
       };
 
       // 2. Task Name (Friendly name, blank by default)

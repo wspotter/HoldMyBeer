@@ -7,6 +7,7 @@ import sqlite3
 import threading
 import tempfile
 import uuid
+import ipaddress
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -265,9 +266,17 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def local_only(request: Request, call_next):
+        def _is_allowed(h: str) -> bool:
+            if h in {"localhost", "127.0.0.1", "::1", "testserver", "testclient"}:
+                return True
+            try:
+                return ipaddress.ip_address(h).is_private
+            except ValueError:
+                return False
+
         host_header = request.headers.get("host", "")
         host = (urlsplit("//" + host_header).hostname or "").lower()
-        if host not in {"localhost", "127.0.0.1", "::1", "testserver"}:
+        if not _is_allowed(host):
             return Response("local Host required", status_code=400)
         origin = request.headers.get("origin")
         if origin:
@@ -278,12 +287,14 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                 request_port = request_url.port or (443 if request_url.scheme == "https" else 80)
             except ValueError:
                 return Response("invalid Origin or Host", status_code=403)
-            if (parsed.scheme != request_url.scheme or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
-                    or parsed.hostname != (request_url.hostname or "").lower() or origin_port != request_port
+            parsed_host = (parsed.hostname or "").lower()
+            req_host = (request_url.hostname or "").lower()
+            if (parsed.scheme != request_url.scheme or not _is_allowed(parsed_host)
+                    or parsed_host != req_host or origin_port != request_port
                     or parsed.username or parsed.password or parsed.path not in {"", "/"} or parsed.query or parsed.fragment):
                 return Response("foreign Origin rejected", status_code=403)
         peer = request.client.host if request.client else "127.0.0.1"
-        if peer not in {"127.0.0.1", "::1", "testclient"}:
+        if not _is_allowed(peer):
             return Response("loopback clients only", status_code=403)
         if request.url.path in {"/", "/index.html", "/app.js", "/simple.js", "/training.js", "/directed.js", "/briefs.js", "/style.css"}:
             request.scope["headers"] = [

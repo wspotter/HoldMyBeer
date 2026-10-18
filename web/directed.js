@@ -448,7 +448,7 @@
       choices: {},
     };
     const rawQuestions = reviewData.adaptive_questions || reviewData.multiple_choice_questions || [];
-    const questions = rawQuestions.slice(0, 3);
+    let questions = rawQuestions.slice(0, 3);
     for (const q of questions) state.choices[q.id] = q.selected || q.options?.[0]?.id || "";
 
     function chipRow(options, current, onPick) {
@@ -519,7 +519,11 @@
             body: JSON.stringify({app_name: appInput.value.trim(), task_name: taskInput.value.trim()}),
           });
           state.app = saved.app_name; state.task = saved.task_name; state.taskId = saved.task_id;
-          questions.length ? pageQuestions(0) : finish();
+          if (saved.questions && saved.questions.length) {
+            questions = saved.questions.slice(0, 3);
+            for (const q of questions) state.choices[q.id] = q.selected || q.options?.[0]?.id || "";
+          }
+          pageSmartTuning();
         } catch (err) {
           note.textContent = `Could not save the name: ${err.message}`;
           next.disabled = false; next.textContent = "Looks right →";
@@ -528,44 +532,117 @@
       (appInput.value ? taskInput : appInput).focus();
     }
 
-    // ---------- Page 2: Quick questions (1-3, pre-answered) ----------
-    function pageQuestions(index) {
-      const q = questions[index];
-      badge(`STEP 2 OF 3 · QUICK QUESTION ${index + 1} OF ${questions.length}`);
+    // ---------- Page 2: Intuitive Behavioral Setup (Smart Cockpit) ----------
+    function pageSmartTuning() {
+      badge("STEP 2 OF 3 · TUNE BEHAVIOR");
       target.replaceChildren();
-      const sub = add("p", `${state.task} · ${state.app}`, target, "eyebrow");
-      sub.style.margin = "0 0 6px";
-      const card = document.createElement("div");
-      card.className = "mc-question-card";
-      const title = add("h3", q.question.replace(/^\d+\.\s*/, ""), card);
-      title.tabIndex = -1;
-      add("small", "My best guess is already selected — tap to change.", card);
-      const list = document.createElement("div");
-      list.className = "mc-options-list";
-      for (const opt of q.options || []) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        const selected = opt.id === state.choices[q.id];
-        btn.className = "mc-option-btn" + (selected ? " selected" : "");
-        btn.setAttribute("aria-pressed", selected ? "true" : "false");
-        btn.textContent = `${selected ? "🔘" : "⚪"} ${opt.label}`;
-        btn.onclick = () => {
-          state.choices[q.id] = opt.id;
-          index < questions.length - 1 ? pageQuestions(index + 1) : finish();
-        };
-        list.append(btn);
+
+      state.choices.q_action = state.choices.q_action || "recorded_flow";
+      state.choices.q_input = state.choices.q_input || "same_target";
+      state.choices.q_done = state.choices.q_done || "window_minimized";
+      state.choices.q_safety = state.choices.q_safety || "sandbox_first";
+
+      const top = document.createElement("div");
+      top.style.marginBottom = "10px";
+      const heading = add("h2", "How should your assistant run this?", top, "hmb-wiz-title");
+      heading.tabIndex = -1;
+      add("p", `${state.task} in ${state.app}`, top, "eyebrow");
+      target.append(top);
+
+      const grid = document.createElement("div");
+      grid.className = "hmb-tune-grid";
+
+      grid.append(createTuneRow({
+        icon: "⚡",
+        title: "Input & Target",
+        desc: "Does this repeat the exact same actions, or need input each time?",
+        options: [
+          { id: "same_target", label: "Exact Replay", desc: "Always repeat what was recorded" },
+          { id: "ask_each_time", label: "Ask for Input", desc: "Ask for target/parameters before running" },
+        ],
+        current: state.choices.q_input,
+        onSelect: val => { state.choices.q_input = val; updateTrigger(); },
+      }));
+
+      grid.append(createTuneRow({
+        icon: "👁️",
+        title: "Completion Check",
+        desc: "How does your assistant confirm the task succeeded?",
+        options: [
+          { id: "window_minimized", label: "App Completes", desc: "When window closes or action completes" },
+          { id: "verified_output", label: "Receipt / File Saved", desc: "When verified output file exists" },
+        ],
+        current: state.choices.q_done,
+        onSelect: val => { state.choices.q_done = val; },
+      }));
+
+      grid.append(createTuneRow({
+        icon: "🛡️",
+        title: "Safety & Sandboxing",
+        desc: "Protect real system files before execution",
+        options: [
+          { id: "sandbox_first", label: "Safe Sandbox First", desc: "Simulate and verify before real changes" },
+          { id: "pause_immediately", label: "Pause & Ask Me", desc: "Always confirm before running" },
+        ],
+        current: state.choices.q_safety,
+        onSelect: val => { state.choices.q_safety = val; },
+      }));
+
+      target.append(grid);
+
+      const triggerBox = document.createElement("div");
+      triggerBox.className = "hmb-say-box";
+      triggerBox.style.margin = "12px 0 10px";
+      const triggerStrong = document.createElement("strong");
+      function updateTrigger() {
+        const ask = state.choices.q_input === "ask_each_time";
+        triggerStrong.textContent = ask ? `🗣️ “${state.task} for [input] in ${state.app}”` : `🗣️ “${state.task} in ${state.app}”`;
       }
-      card.append(list);
-      target.append(card);
+      updateTrigger();
+      triggerBox.append(triggerStrong);
+      target.append(triggerBox);
+
       const nav = document.createElement("div");
       nav.className = "mc-step-nav";
-      const back = add("button", "← Back", nav, "quiet"); back.type = "button";
-      back.onclick = () => (index === 0 ? pageName() : pageQuestions(index - 1));
-      const skip = add("button", "Your guesses are fine — finish ✓", nav, "quiet");
-      skip.id = "oneClickApproveBtn"; skip.type = "button";
-      skip.onclick = finish;
+      const back = add("button", "← Back to naming", nav, "quiet"); back.type = "button";
+      back.onclick = pageName;
+
+      const finishBtn = add("button", "Looks Perfect — Save & Activate ✨", nav, "primary");
+      finishBtn.id = "oneClickApproveBtn"; finishBtn.type = "button";
+      finishBtn.style.padding = "10px 22px";
+      finishBtn.style.fontSize = "15px";
+      finishBtn.onclick = finish;
       target.append(nav);
-      title.focus();
+
+      heading.focus();
+    }
+
+    function createTuneRow({icon, title, desc, options, current, onSelect}) {
+      const row = document.createElement("div");
+      row.className = "hmb-tune-row";
+      const hdr = document.createElement("div");
+      hdr.className = "hmb-tune-header";
+      hdr.innerHTML = `<span class="hmb-tune-icon">${icon}</span><div><strong>${title}</strong><small>${desc}</small></div>`;
+      row.append(hdr);
+
+      const pills = document.createElement("div");
+      pills.className = "hmb-tune-pills";
+      const btns = [];
+      for (const opt of options) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "hmb-tune-pill" + (opt.id === current ? " selected" : "");
+        btn.innerHTML = `<span class="pill-title">${opt.label}</span><span class="pill-desc">${opt.desc}</span>`;
+        btn.onclick = () => {
+          btns.forEach(b => b.classList.remove("selected"));
+          btn.classList.add("selected");
+          onSelect(opt.id);
+        };
+        btns.push(btn);
+        pills.append(btn);
+      }
+      row.append(pills);
+      return row;
     }
 
     // ---------- Page 3: Done — what to say + try it ----------

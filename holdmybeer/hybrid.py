@@ -1240,12 +1240,12 @@ def build_multiple_choice_questions(
         default_action = "file_organize"
     else:
         suggested_names = [
-            task_name if task_name and not task_name.startswith("Quick Workflow") else "Organize & Rename Files",
+            task_name if task_name and not task_name.startswith("Quick Workflow") else (f"Workflow in {app_name}" if app_name else "Perform Task"),
+            "Organize & Rename Files",
             "Summarize CSV Report",
             "Run Terminal Command (e.g. nslookup)",
-            "Save Browser Form Draft",
         ]
-        default_action = "file_organize"
+        default_action = "recorded_flow"
 
     # Deduplicate suggested_names preserving order
     dedup_names: list[str] = []
@@ -1254,6 +1254,7 @@ def build_multiple_choice_questions(
             dedup_names.append(n)
 
     default_done = "window_minimized" if "minimiz" in (done or "").lower() else "verified_output"
+    custom_label = f"Perform {task_name} in {app_name} (as recorded)" if (task_name and app_name) else "Perform the recorded actions in the app"
 
     questions = [
         {
@@ -1261,6 +1262,11 @@ def build_multiple_choice_questions(
             "question": "1. What did you just show me in this recording?",
             "selected": saved.get("q_action", default_action),
             "options": [
+                {
+                    "id": "recorded_flow",
+                    "label": custom_label,
+                    "goal_text": goal or f"Perform {task_name or 'the recorded task'} in {app_name or 'the app'} as shown in the recording",
+                },
                 {
                     "id": "terminal_cmd",
                     "label": "Run a terminal command (like nslookup) & capture output",
@@ -1356,10 +1362,11 @@ MAX_QUESTIONS = 3
 def _adaptive_questions(questions: list[dict[str, Any]], category: str) -> list[dict[str, Any]]:
     """Ask only what changes the recipe; never more than MAX_QUESTIONS.
 
-    When the recording context already tells us the kind of task, the "what did you
-    show me" question is skipped (its pre-selected answer still applies).
+    The user already named what they taught in Step 1 ("Name it").
+    q_action ("What did you just show me?") is skipped in adaptive mode so
+    the user is never trapped in canned templates that don't match their task!
     """
-    asked = [q for q in questions if not (q["id"] == "q_action" and category != "general")]
+    asked = [q for q in questions if q["id"] != "q_action"]
     if len(asked) > MAX_QUESTIONS:
         asked = [q for q in asked if q["id"] != "q_safety"]
     return asked[:MAX_QUESTIONS]
@@ -1478,7 +1485,15 @@ def rename_session_task(store: Any, session_id: str, app_name: str, task_name: s
     existing = get_hybrid_recipe(store, task_id)
     if existing is not None:
         save_hybrid_recipe(store, task_id, existing.model_copy(update={"title": task_name, "app_name": app_name}))
-    return {"session_id": sid, "task_id": task_id, "app_name": app_name, "task_name": task_name}
+    mc = build_multiple_choice_questions(task_name=task_name, app_name=app_name)
+    return {
+        "session_id": sid,
+        "task_id": task_id,
+        "app_name": app_name,
+        "task_name": task_name,
+        "questions": mc["adaptive_questions"],
+        "all_questions": mc["all_questions"],
+    }
 
 
 def _trigger_phrases(task_name: str, app_name: str, recipe: HybridRecipe) -> dict[str, Any]:
@@ -1580,6 +1595,32 @@ def _recipe_from_choices(
         ]
         assertions = [
             HybridAssertion(type="non_empty_output", target="fixture_draft_receipt.json", phase="post"),
+        ]
+    elif action_choice in {"recorded_flow", "custom_recorded"} or (action_choice not in {"terminal_cmd", "csv_summary", "browser_draft", "file_organize"}):
+        steps = [
+            HybridStep(
+                id="step-recorded-action",
+                action="browser_or_fixture_action",
+                goal=goal_text or f"Execute {title} in {app_name}",
+                check=done_text or f"{title} finished cleanly in {app_name}",
+                target=app_name,
+                input="input_text" if input_choice == "ask_each_time" else "",
+                params={"app_name": app_name, "task_name": title, "receipt_file": "workflow_receipt.json"},
+            ),
+        ]
+        params = []
+        if input_choice == "ask_each_time":
+            params.append(
+                HybridParameter(
+                    name="input_text",
+                    type="string",
+                    description=f"Input or parameter for {title}",
+                    default="",
+                    required=True,
+                )
+            )
+        assertions = [
+            HybridAssertion(type="non_empty_output", target="workflow_receipt.json", phase="post"),
         ]
     else:
         steps = [

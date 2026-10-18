@@ -1446,9 +1446,16 @@ def rename_session_task(store: Any, session_id: str, app_name: str, task_name: s
     append_to_task_id = None
     with store.lock:
         with store.connect() as db:
-            row = db.execute("SELECT task_id FROM training_versions WHERE session_id=?", (sid,)).fetchone()
+            row = db.execute(
+                "SELECT v.task_id, t.archived_at FROM training_versions v "
+                "JOIN training_tasks t ON t.id=v.task_id WHERE v.session_id=?",
+                (sid,),
+            ).fetchone()
             if row is not None:
-                task_id = row[0]
+                if row["archived_at"] is not None:
+                    from fastapi import HTTPException
+                    raise HTTPException(409, "task is archived; restore it before renaming or merging a recording")
+                task_id = row["task_id"]
                 app_row = db.execute("SELECT id, name FROM training_apps WHERE name=?", (app_name,)).fetchone()
                 if app_row is None:
                     aid = str(uuid.uuid4())
@@ -2007,7 +2014,10 @@ def start_native_recording(store: Any) -> dict[str, Any]:
             }
             db.execute("INSERT INTO sessions(id,data) VALUES(?,?)", (sid, json.dumps(session_data)))
             db.execute("INSERT INTO procedure_revisions VALUES(?,?,?,?,?)", (sid, 1, json.dumps(session_data["procedure"]), now, "saved"))
-            db.execute("INSERT INTO training_tasks VALUES(?,?,?,?,?,?)", (tid, aid, final_task_name, 1, None, now))
+            db.execute(
+                "INSERT INTO training_tasks(id,app_id,name,latest_version,working_version,created_at) VALUES(?,?,?,?,?,?)",
+                (tid, aid, final_task_name, 1, None, now),
+            )
             db.execute("INSERT INTO training_versions VALUES(?,?,?,?,?)", (tid, 1, sid, now, None))
 
     raw_mp4 = store.artifacts / f".{sid}.capture.mp4"

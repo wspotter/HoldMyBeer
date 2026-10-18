@@ -267,23 +267,206 @@
     catch (error) { setStatus("trainingDescriptionStatus", `Could not reload task details. ${error.message}`); }
     finally { busy = false; }
   });
-  window.hmbLoadTrainingSaved = async () => {
-    const list = $("savedList"); list.replaceChildren(); setStatus("savedStatus", "Loading apps and tasks…");
-    try {
-      const data = await trainingApi("/api/training/apps"); apps = data.apps || [];
-      let taskCount = 0;
-      for (const app of apps.filter(app => app.tasks?.length)) {
-        add("h2", app.name, list);
-        for (const task of app.tasks) {
-          taskCount += 1;
-          const button = add("button", `${task.name} · training version ${task.latest_version || "—"}${task.working_version ? ` · practice app tested ${task.working_version}` : " · needs review or testing"}`, list, "saved-task");
-          button.type = "button";
-          button.onclick = () => { window.hmbShowView("directed"); document.dispatchEvent(new CustomEvent("hmb-resume-training-task", {detail:task.id})); };
-        }
+  let savedGeneration = 0, savedDetail = null, savedDirty = false, pendingSavedTask = null, pendingSavedAction = null;
+  const savedDisabledBeforeRequest = new WeakMap();
+  function setSavedEditorPending(pending, generation) {
+    if (generation !== savedGeneration) return;
+    for (const control of $("savedEditor").querySelectorAll("input,textarea,button,select")) {
+      if (pending) {
+        if (!savedDisabledBeforeRequest.has(control)) savedDisabledBeforeRequest.set(control, control.disabled);
+        control.disabled = true;
+      } else if (savedDisabledBeforeRequest.has(control)) {
+        control.disabled = savedDisabledBeforeRequest.get(control);
+        savedDisabledBeforeRequest.delete(control);
       }
-      const legacyCount = await window.hmbAppendLegacySaved(list);
+    }
+  }
+  function updateSavedTreeTask(task) {
+    for (const app of apps) {
+      const index = (app.tasks || []).findIndex(item => String(item.id) === String(task.id));
+      if (index >= 0) {
+        if (task.archived && !$("savedShowArchived").checked) app.tasks.splice(index, 1);
+        else app.tasks[index] = task;
+      } else if ((!task.archived || $("savedShowArchived").checked) && String(app.id) === String(task.app_id)) {
+        app.tasks = [...(app.tasks || []), task];
+      }
+    }
+    renderSavedTree();
+  }
+  function savedTaskButton(task) {
+    const button = document.createElement("button"); button.className = "saved-task";
+    button.type = "button"; button.dataset.taskId = task.id;
+    const title = add("strong", task.name, button);
+    const version = add("small", task.archived ? "Archived" : task.latest_version ? `Version ${task.latest_version}${task.working_version ? ` · tested ${task.working_version}` : " · needs review"}` : "No recording yet", button);
+    button.setAttribute("aria-label", `${task.name}${task.archived ? ", archived" : ""}`);
+    if (String(savedDetail?.id) === String(task.id)) button.setAttribute("aria-current", "page");
+    button.onclick = () => selectSavedTask(task.id);
+    return button;
+  }
+  function renderSavedTree() {
+    const tree = $("savedTree"); tree.replaceChildren();
+    const tasks = apps.flatMap(app => app.tasks || []);
+    for (const app of apps.filter(item => item.tasks?.length)) {
+      const group = document.createElement("details"); group.className = "saved-app-group"; group.dataset.appId = app.id;
+      group.open = true;
+      const summary = add("summary", app.name, group);
+      const count = add("small", `${app.tasks.length} ${app.tasks.length === 1 ? "task" : "tasks"}`, summary);
+      const list = add("div", "", group, "saved-app-tasks");
+      for (const task of app.tasks) list.append(savedTaskButton(task));
+      tree.append(group);
+    }
+    if (!tasks.length) add("p", $("savedShowArchived").checked ? "No archived tasks found." : "No saved tasks yet. Start a recording to save your first task.", tree, "saved-tree-empty");
+  }
+  function savedSessionAnswers(task) { return task.session?.answers || {}; }
+  function renderSavedEditor(task, historicalSession = null, historicalVersion = null) {
+    const editor = $("savedEditor"); editor.replaceChildren(); savedDirty = false;
+    const selectedSession = historicalSession || task.session || {};
+    const answers = selectedSession.answers || {};
+    const archived = !!task.archived;
+    const top = add("div", "", editor, "saved-editor-head");
+    add("p", task.app_name || apps.find(app => String(app.id) === String(task.app_id))?.name || "Saved app", top, "eyebrow");
+    const historicalName = (answers.teaching_task_name || selectedSession.title || task.name || "").replace(/^Training · /, "");
+    const heading = add("h2", historicalName || task.name, top); heading.id = "savedEditorTitle";
+    add("p", historicalVersion ? `Viewing version ${historicalVersion} · read only` : archived ? "Archived task · read only" : "Changes are saved as a new version.", top, "compact-copy");
+    const video = document.createElement("video"); video.id = "savedTaskVideo"; video.controls = true; video.playsInline = true; video.preload = "metadata";
+    if (selectedSession.media_url || selectedSession.media_path) video.src = selectedSession.media_url || `/api/sessions/${encodeURIComponent(selectedSession.id)}/media`;
+    else { video.hidden = true; add("p", "No recording saved for this task yet.", editor, "saved-no-recording"); }
+    editor.append(video);
+
+    const form = document.createElement("form"); form.id = "savedTaskForm"; form.className = "saved-task-form";
+    const fields = [
+      ["savedTaskName", "Task title", historicalName || task.name || "", 200],
+      ["savedTaskGoal", "Task description (optional)", answers.teaching_goal || task.description || "", 2000, true],
+      ["savedTaskDone", "What should be visible when finished? (optional)", answers.teaching_done || task.done || "", 1000, true],
+      ["savedTaskNotes", "Notes", selectedSession.notes || task.notes || "", 20000, true],
+    ];
+    for (const [id, label, value, max, multiline] of fields) {
+      add("label", label, form).htmlFor = id;
+      const input = document.createElement(multiline ? "textarea" : "input"); input.id = id; input.value = value; input.maxLength = max;
+      input.disabled = archived || !!historicalVersion; input.required = id === "savedTaskName"; form.append(input);
+    }
+    const save = add("button", "Save changes as new version", form, "primary"); save.id = "savedTaskSave"; save.type = "submit"; save.disabled = archived || !!historicalVersion;
+    form.onsubmit = async event => {
+      event.preventDefault(); if (busy || archived || historicalVersion || !form.reportValidity()) return;
+      busy = true; const requestGeneration = savedGeneration; setSavedEditorPending(true, requestGeneration); setStatus("savedStatus", "Saving a new version…");
+      try {
+        const updated = await trainingApi(`/api/training/tasks/${task.id}/settings`, {method:"PUT", body:JSON.stringify({
+          base_version:task.latest_version || 0, name:$("savedTaskName").value.trim(), description:$("savedTaskGoal").value.trim(),
+          done:$("savedTaskDone").value.trim(), notes:$("savedTaskNotes").value.trim(),
+        })});
+        updateSavedTreeTask(updated);
+        if (requestGeneration === savedGeneration) {
+          savedDetail = updated; detail = updated; savedDirty = false; renderSavedEditor(updated);
+          setStatus("savedStatus", `Saved version ${updated.latest_version || "—"}.`);
+        }
+      } catch (error) { if (requestGeneration === savedGeneration) { setSavedEditorPending(false, requestGeneration); setStatus("savedStatus", `Could not save changes. ${error.message}`); } }
+      finally { busy = false; }
+    };
+    for (const input of form.querySelectorAll("input,textarea")) input.addEventListener("input", () => { savedDirty = true; });
+    editor.append(form);
+
+    const controls = add("div", "", editor, "saved-editor-actions");
+    if (archived) {
+      const restore = add("button", "Restore task", controls, "primary"); restore.id = "savedRestoreTask"; restore.type = "button"; restore.onclick = () => archiveSavedTask(task.id, false);
+    } else {
+      const record = add("button", "Update recording", controls, "quiet"); record.id = "savedUpdateRecording"; record.type = "button";
+      record.onclick = () => requestSavedAction(() => { window.hmbShowView("directed"); document.dispatchEvent(new CustomEvent("hmb-resume-training-task", {detail:task.id})); });
+      const archive = add("button", "Archive task", controls, "quiet"); archive.id = "savedArchiveTask"; archive.type = "button"; archive.onclick = () => requestSavedAction(() => archiveSavedTask(task.id, true));
+    }
+    const historyLabel = add("label", "Recording version", controls); historyLabel.htmlFor = "savedHistory";
+    const history = document.createElement("select"); history.id = "savedHistory"; controls.append(history);
+    const current = document.createElement("option"); current.value = task.latest_version ? String(task.latest_version) : "none"; current.textContent = `Current · version ${task.latest_version || "—"}`; history.append(current);
+    for (const version of (task.versions || []).filter(item => item.version !== task.latest_version).sort((a,b) => b.version - a.version)) {
+      const option = document.createElement("option"); option.value = version.version; option.textContent = `Version ${version.version}${version.version === task.working_version ? " · last tested" : ""}`; history.append(option);
+    }
+    if (historicalVersion) history.value = String(historicalVersion);
+    const restoreVersion = add("button", "Use this version as a starting point", controls, "quiet"); restoreVersion.id = "savedRestoreVersion"; restoreVersion.type = "button"; restoreVersion.disabled = !historicalVersion || archived;
+    history.onchange = async () => {
+      const versionGeneration = ++savedGeneration;
+      if (savedDirty) { const selected = history.value; history.value = historicalVersion ? String(historicalVersion) : (task.latest_version ? String(task.latest_version) : "none"); requestSavedAction(() => selectSavedHistory(task, selected)); return; }
+      if (history.value === String(task.latest_version) || history.value === "none") { renderSavedEditor(task); return; }
+      const v = (task.versions || []).find(item => String(item.version) === history.value);
+      if (!v?.session_id) { setStatus("savedStatus", "That version has no saved recording."); return; }
+      setSavedEditorPending(true, versionGeneration);
+      try { const session = await trainingApi(`/api/sessions/${encodeURIComponent(v.session_id)}`); if (versionGeneration === savedGeneration && String(savedDetail?.id) === String(task.id)) renderSavedEditor(task, session, v.version); }
+      catch (error) { if (versionGeneration === savedGeneration) { setSavedEditorPending(false, versionGeneration); setStatus("savedStatus", `Could not load that version. ${error.message}`); } }
+    };
+    restoreVersion.onclick = async () => {
+      if (busy || history.value === String(task.latest_version) || history.value === "none" || archived) return;
+      busy = true; const requestGeneration = savedGeneration; setSavedEditorPending(true, requestGeneration);
+      try { const v = Number(history.value), restored = await trainingApi(`/api/training/tasks/${task.id}/restore`, {method:"POST", body:JSON.stringify({base_version:task.latest_version, source_version:v})}); updateSavedTreeTask(restored); if (requestGeneration === savedGeneration) { savedDetail = restored; detail = restored; renderSavedEditor(restored); setStatus("savedStatus", `Copied version ${v} into a new version.`); } }
+      catch (error) { if (requestGeneration === savedGeneration) { setSavedEditorPending(false, requestGeneration); setStatus("savedStatus", `Could not restore version. ${error.message}`); } }
+      finally { busy = false; }
+    };
+  }
+  async function selectSavedHistory(task, version) {
+    if (version === String(task.latest_version) || version === "none") { renderSavedEditor(task); return; }
+    const selected = (task.versions || []).find(item => String(item.version) === version);
+    if (!selected?.session_id) return;
+    const generation = ++savedGeneration; setSavedEditorPending(true, generation);
+    try { const session = await trainingApi(`/api/sessions/${encodeURIComponent(selected.session_id)}`); if (generation === savedGeneration) renderSavedEditor(task, session, selected.version); }
+    catch (error) { if (generation === savedGeneration) { setSavedEditorPending(false, generation); setStatus("savedStatus", `Could not load that version. ${error.message}`); } }
+  }
+  function requestSavedAction(action) {
+    pendingSavedTask = null;
+    if (!savedDirty) { action(); return; }
+    pendingSavedAction = action; $("savedDirtyPrompt").hidden = false;
+  }
+  async function archiveSavedTask(taskId, archive) {
+    if (busy) return; busy = true; const requestGeneration = ++savedGeneration; setSavedEditorPending(true, requestGeneration);
+    try { const updated = await trainingApi(`/api/training/tasks/${taskId}/${archive ? "archive" : "unarchive"}`, {method:"POST"}); updateSavedTreeTask(updated); if (requestGeneration === savedGeneration) { savedDetail = updated; detail = updated; savedDirty = false; renderSavedEditor(updated); setStatus("savedStatus", archive ? "Task archived. Its recording and versions are preserved." : "Task restored."); } }
+    catch (error) { if (requestGeneration === savedGeneration) { setSavedEditorPending(false, requestGeneration); setStatus("savedStatus", `Could not ${archive ? "archive" : "restore"} task. ${error.message}`); } }
+    finally { busy = false; }
+  }
+  async function selectSavedTask(taskId, confirmed = false) {
+    if (savedDirty && !confirmed) { pendingSavedAction = null; pendingSavedTask = taskId; $("savedDirtyPrompt").hidden = false; return; }
+    $("savedDirtyPrompt").hidden = true; pendingSavedTask = null;
+    const generation = ++savedGeneration; setSavedEditorPending(true, generation); setStatus("savedStatus", "Loading task…");
+    try {
+      const task = await trainingApi(`/api/training/tasks/${taskId}`);
+      if (generation !== savedGeneration) return;
+      savedDetail = task; detail = task; renderSavedTree(); renderSavedEditor(task); setStatus("savedStatus", "Ready to edit.");
+    } catch (error) { if (generation === savedGeneration) { setSavedEditorPending(false, generation); setStatus("savedStatus", `Could not open task. ${error.message}`); } }
+  }
+  $("savedDiscardChanges").onclick = () => { savedDirty = false; $("savedDirtyPrompt").hidden = true; if (pendingSavedAction) { const action = pendingSavedAction; pendingSavedAction = null; action(); } else if (pendingSavedTask) selectSavedTask(pendingSavedTask, true); };
+  $("savedKeepEditing").onclick = () => { pendingSavedTask = null; pendingSavedAction = null; $("savedDirtyPrompt").hidden = true; };
+  $("savedShowArchived").onchange = () => {
+    const requested = $("savedShowArchived").checked;
+    if (savedDirty) { $("savedShowArchived").checked = !requested; requestSavedAction(() => { $("savedShowArchived").checked = requested; window.hmbLoadTrainingSaved({keepSelection:true}); }); }
+    else window.hmbLoadTrainingSaved({keepSelection:true});
+  };
+  document.addEventListener("click", event => {
+    if (!savedDirty || $("savedView").hidden) return;
+    const nav = event.target.closest(".app-nav [data-view], .brand");
+    if (!nav) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    requestSavedAction(() => nav.matches(".brand") ? (window.location.href = nav.href) : window.hmbShowView(nav.dataset.view));
+  }, true);
+  window.hmbLoadTrainingSaved = async ({keepSelection = false} = {}) => {
+    setStatus("savedStatus", "Loading apps and tasks…");
+    const generation = ++savedGeneration; setSavedEditorPending(true, generation);
+    try {
+      const data = await trainingApi(`/api/training/apps${$("savedShowArchived").checked ? "?include_archived=true" : ""}`);
+      if (generation !== savedGeneration) return;
+      apps = data.apps || []; renderSavedTree();
+      $("savedLegacyList").replaceChildren();
+      const legacyCount = await window.hmbAppendLegacySaved($("savedLegacyList"));
+      if (generation !== savedGeneration) return;
+      const taskCount = apps.reduce((sum, app) => sum + (app.tasks?.length || 0), 0);
       setStatus("savedStatus", taskCount + legacyCount ? "Choose a task to view its recording or make changes." : "No saved tasks yet. Start a recording to save your first task.");
-    } catch (error) { setStatus("savedStatus", `Could not load saved tasks. ${error.message}`); }
+      if (keepSelection && savedDetail) {
+        const task = apps.flatMap(app => app.tasks || []).find(item => String(item.id) === String(savedDetail.id));
+        if (task) {
+          const refreshed = await trainingApi(`/api/training/tasks/${task.id}`);
+          if (generation !== savedGeneration) return;
+          savedDetail = refreshed; detail = refreshed; renderSavedEditor(refreshed); renderSavedTree();
+        }
+      } else if (savedDetail && !apps.flatMap(app => app.tasks || []).some(item => String(item.id) === String(savedDetail.id))) {
+        if (generation !== savedGeneration) return;
+        savedDetail = null; $("savedEditor").innerHTML = '<div class="saved-editor-empty"><strong>Choose a task</strong><p>Its recording and editable settings will appear here.</p></div>';
+      }
+      setSavedEditorPending(false, generation);
+    } catch (error) { if (generation === savedGeneration) { setSavedEditorPending(false, generation); setStatus("savedStatus", `Could not load saved tasks. ${error.message}`); } }
   };
   document.addEventListener("hmb-resume-training-task", async event => {
     if (busy) return;

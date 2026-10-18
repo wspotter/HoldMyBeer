@@ -163,6 +163,7 @@ def test_imported_recording_waiting_review_saved_restore_and_approval_never_runs
             page.get_by_role("button", name="Saved tasks", exact=True).click()
             expect(page.locator("#savedList .saved-task")).to_have_count(1)
             page.locator("#savedList .saved-task").click()
+            page.locator("#savedUpdateRecording").click()
             expect(page.locator("#directedView")).to_be_visible()
             expect(page.locator("#trainingDescriptionStage")).to_be_visible()
             expect(page.locator("#trainingDescriptionText")).to_contain_text("Save a request")
@@ -335,6 +336,7 @@ def test_correction_marks_interpretation_stale_pending_revision_and_retains_note
             page.get_by_role("button", name="Saved tasks", exact=True).click()
             expect(page.locator("#savedList .saved-task")).to_have_count(1)
             page.locator("#savedList .saved-task").click()
+            page.locator("#savedUpdateRecording").click()
             expect(page.locator("#trainingRecordContinue")).to_be_visible()
             page.locator("#trainingRecordContinue").click()
             expect(page.locator("#directedRecordStage")).to_be_visible()
@@ -389,7 +391,7 @@ def test_easy_recording_saves_directly_to_library_without_execution(server, one_
             expect(page.locator("#savedList")).not_to_contain_text("Quick Workflows")
             expect(page.locator("#savedList")).not_to_contain_text("No tasks saved for this app.")
             saved = page.locator("#savedList button").filter(has_text="Save a customer order")
-            expect(saved).to_contain_text("needs review or testing")
+            expect(saved).to_contain_text("needs review")
             expect(page.locator("#savedStatus")).to_contain_text("Choose a task")
             if evidence_dir:
                 page.screenshot(path=str(evidence_dir / "easy-saved-tasks-390.png"), full_page=True)
@@ -399,8 +401,9 @@ def test_easy_recording_saves_directly_to_library_without_execution(server, one_
             assert page.locator("#hmbCliCopyBtn").count() == 0
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
             saved.click()
-            expect(page.locator("#trainingDescriptionText")).to_contain_text("Save a customer order")
-            expect(page.locator("#trainingEdit")).to_be_visible()
+            expect(page.locator("#savedTaskName")).to_have_value("Save a customer order")
+            expect(page.locator("#savedTaskVideo")).to_be_visible()
+            expect(page.locator("#savedTaskSave")).to_be_visible()
             assert not errors
         finally:
             browser.close()

@@ -14,6 +14,10 @@ The Hermes integration is the `holdmybeer-mcp` stdio server. `holdmybeer connect
 
 The recording naming form offers explicit existing-app and per-app task selectors beside editable names. App changes refresh task choices and clear the prior app’s selected task. Selecting an existing task saves the new recording as its next version; the saved-version hint makes this visible before saving. Native selects remain available after text typos, without relying on filtered browser datalist suggestions.
 
+Saved tasks is an app/task sidebar with a dedicated selected-task editor and recording playback. Merely opening a task is read-only. Explicit settings save creates a new training version and preserves prior media/history; the settings endpoint rejects stale base versions and duplicate task titles. Historical versions are read-only in the editor. Archive is reversible and retains all recordings and versions; archived tasks are omitted from active pickers until restored.
+
+`GET /api/training/apps?include_archived=true` includes archived tasks. `POST /api/training/tasks/{id}/archive` and `/unarchive` change organization only; `/restore` continues to mean copying a historical version. `PUT /api/training/tasks/{id}/settings` accepts `base_version`, `name`, `description`, `done`, and `notes`, returning the updated task. Archived tasks must be unarchived before editing or attaching a recording. SQLite adds nullable `archived_at` to existing task tables without discarding data.
+
 ## Local teaching engine
 
 FastAPI serves the local app → task training workspace, recording UI, and separate Advanced workshops on loopback:

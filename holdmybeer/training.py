@@ -31,11 +31,15 @@ def attach_recording_as_next_version(store, session_id: str, target_task_id: str
         target = db.execute("SELECT * FROM training_tasks WHERE id=?", (target_id,)).fetchone()
         if source is None or target is None:
             raise ValueError("recording or target task no longer exists")
+        if target["archived_at"] is not None:
+            raise HTTPException(409, "target task is archived; restore it before adding a recording")
         source_id = source["task_id"]
         if source_id == target_id:
             return int(target["latest_version"])
 
         source_task = db.execute("SELECT * FROM training_tasks WHERE id=?", (source_id,)).fetchone()
+        if source_task is not None and source_task["archived_at"] is not None:
+            raise HTTPException(409, "source task is archived; restore it before renaming or merging")
         source_versions = db.execute(
             "SELECT version FROM training_versions WHERE task_id=? ORDER BY version", (source_id,)
         ).fetchall()
@@ -105,6 +109,26 @@ class RestoreInput(VersionInput):
     source_version: int = Field(ge=1)
 
 
+class TaskSettingsInput(StrictModel):
+    base_version: int = Field(ge=1)
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    done: str = Field(default="", max_length=1000)
+    notes: str = Field(default="", max_length=20_000)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value):
+        if not value.strip():
+            raise ValueError("task name cannot be blank")
+        return value.strip()
+
+    @field_validator("description", "done", "notes")
+    @classmethod
+    def clean_text(cls, value):
+        return value.strip()
+
+
 class ActivateInput(StrictModel):
     version: int = Field(ge=1)
     run_id: uuid.UUID
@@ -119,13 +143,16 @@ def training_router(store):
         CREATE TABLE IF NOT EXISTS training_tasks(
             id TEXT PRIMARY KEY, app_id TEXT NOT NULL REFERENCES training_apps(id), name TEXT NOT NULL,
             latest_version INTEGER NOT NULL, working_version INTEGER, created_at TEXT NOT NULL,
-            UNIQUE(app_id, name));
+            archived_at TEXT, UNIQUE(app_id, name));
         CREATE TABLE IF NOT EXISTS training_versions(
             task_id TEXT NOT NULL REFERENCES training_tasks(id), version INTEGER NOT NULL,
             session_id TEXT NOT NULL UNIQUE REFERENCES sessions(id), created_at TEXT NOT NULL,
             parent_version INTEGER, PRIMARY KEY(task_id, version));
         CREATE INDEX IF NOT EXISTS training_tasks_app ON training_tasks(app_id);
         """)
+        task_columns = {row[1] for row in db.execute("PRAGMA table_info(training_tasks)")}
+        if "archived_at" not in task_columns:
+            db.execute("ALTER TABLE training_tasks ADD COLUMN archived_at TEXT")
 
     def get_task(db, task_id):
         row = db.execute("SELECT * FROM training_tasks WHERE id=?", (task_id,)).fetchone()
@@ -147,6 +174,7 @@ def training_router(store):
             name = data.get("answers", {}).get("teaching_task_name") or data.get("title") or task["name"]
             return {"id": task_id, "app_id": task["app_id"], "name": name,
                     "latest_version": task["latest_version"], "working_version": task["working_version"],
+                    "archived_at": task["archived_at"], "archived": task["archived_at"] is not None,
                     "versions": [{k: v[k] for k in ("version", "session_id", "created_at", "parent_version")} for v in history],
                     "session": _session_context(data, task["latest_version"])}
 
@@ -192,18 +220,23 @@ def training_router(store):
         return data
 
     @router.get("/apps")
-    def list_apps():
+    def list_apps(include_archived: bool = False):
         with store.connect() as db:
             apps = []
             for app in db.execute("SELECT id,name FROM training_apps ORDER BY created_at,id"):
                 tasks = []
-                for task in db.execute("SELECT * FROM training_tasks WHERE app_id=? ORDER BY created_at,id", (app["id"],)):
+                query = "SELECT * FROM training_tasks WHERE app_id=?"
+                if not include_archived:
+                    query += " AND archived_at IS NULL"
+                query += " ORDER BY created_at,id"
+                for task in db.execute(query, (app["id"],)):
                     latest = db.execute("SELECT session_id FROM training_versions WHERE task_id=? AND version=?",
                                         (task["id"], task["latest_version"])).fetchone()
                     session = store.get_session(latest["session_id"])
                     tasks.append({"id": task["id"], "name": session.get("answers", {}).get("teaching_task_name") or session.get("title") or task["name"],
                                   "description": session["answers"].get("teaching_goal", ""),
                                   "latest_version": task["latest_version"], "working_version": task["working_version"],
+                                  "archived_at": task["archived_at"], "archived": task["archived_at"] is not None,
                                   "session_id": latest["session_id"]})
                 apps.append({"id": app["id"], "name": app["name"], "tasks": tasks})
             return {"apps": apps}
@@ -228,7 +261,7 @@ def training_router(store):
                 raise HTTPException(404, "app not found")
             # The name is an organizational label, not intent; reject a duplicate
             # name in this app before creating a session so we never orphan bytes.
-            if db.execute("SELECT 1 FROM training_tasks WHERE app_id=? AND name=?",
+            if db.execute("SELECT 1 FROM training_tasks WHERE app_id=? AND name=? COLLATE NOCASE",
                           (aid, body.name)).fetchone():
                 raise HTTPException(409, "a task with that name already exists in this app")
         data = make_session(body.name, body.description, body.done)
@@ -236,7 +269,10 @@ def training_router(store):
         try:
             with store.connect() as db:
                 db.execute("BEGIN IMMEDIATE")
-                db.execute("INSERT INTO training_tasks VALUES(?,?,?,?,?,?)", (tid, aid, body.name, 1, None, _now()))
+                db.execute(
+                    "INSERT INTO training_tasks(id,app_id,name,latest_version,working_version,created_at) VALUES(?,?,?,?,?,?)",
+                    (tid, aid, body.name, 1, None, _now()),
+                )
                 db.execute("INSERT INTO training_versions VALUES(?,?,?,?,?)", (tid, 1, data["id"], _now(), None))
         except Exception as exc:
             # A session that could not be attached must not become an orphaned training session.
@@ -256,10 +292,31 @@ def training_router(store):
     def get_task_detail(task_id: uuid.UUID):
         return detail(str(task_id))
 
-    def fork_version(task_id, base_version, source_version=None):
+    @router.post("/tasks/{task_id}/archive")
+    def archive_task(task_id: uuid.UUID):
+        tid = str(task_id)
+        with store.lock, store.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            task = get_task(db, tid)
+            if task["archived_at"] is None:
+                db.execute("UPDATE training_tasks SET archived_at=? WHERE id=?", (_now(), tid))
+        return detail(tid)
+
+    @router.post("/tasks/{task_id}/unarchive")
+    def unarchive_task(task_id: uuid.UUID):
+        tid = str(task_id)
+        with store.lock, store.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            get_task(db, tid)
+            db.execute("UPDATE training_tasks SET archived_at=NULL WHERE id=?", (tid,))
+        return detail(tid)
+
+    def fork_version(task_id, base_version, source_version=None, settings=None):
         tid = str(task_id)
         with store.connect() as db:
             task = get_task(db, tid)
+            if task["archived_at"] is not None:
+                raise HTTPException(409, "task is archived; restore it before creating or restoring a version")
             if task["latest_version"] != base_version:
                 raise HTTPException(409, "task changed; reload before creating a version")
             chosen = source_version if source_version is not None else base_version
@@ -274,16 +331,52 @@ def training_router(store):
             done = content.get("answers", {}).get("teaching_done", "")
             task_name = content.get("answers", {}).get("teaching_task_name") or content.get("title") or task["name"]
             new_number = task["latest_version"] + 1
+            if settings is not None:
+                other = db.execute(
+                    "SELECT 1 FROM training_tasks WHERE app_id=? AND name=? COLLATE NOCASE AND id<>?",
+                    (task["app_id"], settings["name"], tid),
+                ).fetchone()
+                if other is not None:
+                    raise HTTPException(409, "a task with that name already exists in this app")
+                current_answers = current.get("answers", {})
+                if (settings["name"].casefold() == task["name"].casefold()
+                        and settings["description"] == current_answers.get("teaching_goal", "")
+                        and settings["done"] == current_answers.get("teaching_done", "")
+                        and settings["notes"] == current.get("notes", "")):
+                    return detail(tid)
         data = make_session(task_name, description, done, src)
+        if settings is not None:
+            data["title"] = settings["name"]
+            data["answers"].update({
+                "teaching_task_name": settings["name"],
+                "teaching_goal": settings["description"],
+                "teaching_done": settings["done"],
+            })
+            data["notes"] = settings["notes"]
         store_version_session(data, src["id"])
         try:
             with store.connect() as db:
                 db.execute("BEGIN IMMEDIATE")
                 task = get_task(db, tid)
+                if task["archived_at"] is not None:
+                    raise HTTPException(409, "task is archived; restore it before creating a version")
                 if task["latest_version"] != base_version:
                     raise HTTPException(409, "task changed; reload before creating a version")
+                if settings is not None:
+                    other = db.execute(
+                        "SELECT 1 FROM training_tasks WHERE app_id=? AND name=? COLLATE NOCASE AND id<>?",
+                        (task["app_id"], settings["name"], tid),
+                    ).fetchone()
+                    if other is not None:
+                        raise HTTPException(409, "a task with that name already exists in this app")
                 db.execute("INSERT INTO training_versions VALUES(?,?,?,?,?)", (tid, new_number, data["id"], _now(), chosen))
-                db.execute("UPDATE training_tasks SET latest_version=? WHERE id=?", (new_number, tid))
+                if settings is None:
+                    db.execute("UPDATE training_tasks SET latest_version=? WHERE id=?", (new_number, tid))
+                else:
+                    db.execute(
+                        "UPDATE training_tasks SET name=?, latest_version=? WHERE id=?",
+                        (settings["name"], new_number, tid),
+                    )
         except Exception:
             with store.connect() as db:
                 db.execute("DELETE FROM procedure_revisions WHERE session_id=?", (data["id"],))
@@ -298,6 +391,13 @@ def training_router(store):
         with store.lock:
             return fork_version(task_id, body.base_version)
 
+    @router.put("/tasks/{task_id}/settings")
+    def save_task_settings(task_id: uuid.UUID, body: TaskSettingsInput):
+        tid = str(task_id)
+        settings = body.model_dump(exclude={"base_version"})
+        with store.lock:
+            return fork_version(tid, body.base_version, settings=settings)
+
     @router.post("/tasks/{task_id}/restore")
     def restore_task(task_id: uuid.UUID, body: RestoreInput):
         with store.lock:
@@ -310,6 +410,8 @@ def training_router(store):
         with store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             task = get_task(db, tid)
+            if task["archived_at"] is not None:
+                raise HTTPException(409, "task is archived; restore it before activating a version")
             if body.version != task["latest_version"] or task["working_version"] == body.version:
                 raise HTTPException(409, "only the latest unpromoted version can become working")
             row = db.execute("SELECT session_id FROM training_versions WHERE task_id=? AND version=?",
@@ -363,9 +465,20 @@ def is_mutable_training_session(store, session_id: str) -> bool:
         if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='training_versions'").fetchone():
             return True
         row = db.execute("""SELECT 1 FROM training_versions v JOIN training_tasks t ON t.id=v.task_id
-                          WHERE v.session_id=? AND (v.version<t.latest_version OR v.version=t.working_version)""",
+                          WHERE v.session_id=? AND (v.version<t.latest_version OR v.version=t.working_version
+                                                     OR t.archived_at IS NOT NULL)""",
                          (session_id,)).fetchone()
     return row is None
+
+
+def is_archived_training_session(store, session_id: str) -> bool:
+    with store.connect() as db:
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='training_tasks'").fetchone():
+            return False
+        row = db.execute("""SELECT t.archived_at FROM training_versions v
+                           JOIN training_tasks t ON t.id=v.task_id WHERE v.session_id=?""",
+                         (session_id,)).fetchone()
+    return row is not None and row["archived_at"] is not None
 
 
 def training_task_metadata(db, session_id: str) -> dict | None:

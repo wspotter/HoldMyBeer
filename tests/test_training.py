@@ -194,6 +194,134 @@ def test_name_route_refuses_to_move_a_working_provisional_task(client):
     assert client.get(f"/api/training/tasks/{target['task_id']}").json()["versions"][0]["session_id"] == target["session_id"]
 
 
+def test_archive_is_reversible_persistent_and_blocks_mutations_until_restored(client, tmp_path):
+    app = create_app_task(client, "Editor")
+    task = create_task_name_only(client, app["id"], "Archive me")
+    first_sid = task["session"]["id"]
+    first_media = client.post(f"/api/sessions/{first_sid}/media", content=b"version-one",
+                              headers={"content-type": "video/webm"})
+    assert first_media.status_code == 200
+    second = client.post(f"/api/training/tasks/{task['id']}/edit", json={"base_version": 1})
+    assert second.status_code == 200, second.text
+    second_sid = second.json()["session"]["id"]
+    second_media = client.post(f"/api/sessions/{second_sid}/media", content=b"version-two",
+                               headers={"content-type": "video/webm"})
+    assert second_media.status_code == 200
+
+    archived = client.post(f"/api/training/tasks/{task['id']}/archive")
+    assert archived.status_code == 200, archived.text
+    archived_task = archived.json()
+    assert archived_task["archived"] is True
+    assert archived_task["archived_at"]
+    assert client.post(f"/api/training/tasks/{task['id']}/archive").json()["archived_at"] == archived_task["archived_at"]
+    assert client.get(f"/api/training/tasks/{task['id']}").json()["archived"] is True
+    assert client.get("/api/training/apps").json()["apps"][0]["tasks"] == []
+    visible = client.get("/api/training/apps?include_archived=true").json()["apps"][0]["tasks"]
+    assert len(visible) == 1 and visible[0]["archived"] is True
+    assert client.get(f"/api/sessions/{first_sid}/media").content == b"version-one"
+    assert client.get(f"/api/sessions/{second_sid}/media").content == b"version-two"
+
+    edit = client.post(f"/api/training/tasks/{task['id']}/edit", json={"base_version": 2})
+    assert edit.status_code == 409 and "restore" in edit.text.lower()
+    version_restore = client.post(f"/api/training/tasks/{task['id']}/restore", json={
+        "base_version": 2, "source_version": 1,
+    })
+    assert version_restore.status_code == 409 and "restore" in version_restore.text.lower()
+    session_edit = client.put(f"/api/sessions/{second_sid}", json={"notes": "should be refused"})
+    assert session_edit.status_code == 409 and "restore" in session_edit.text.lower()
+    upload = client.post(f"/api/sessions/{second_sid}/media", content=b"blocked",
+                         headers={"content-type": "video/webm"})
+    assert upload.status_code == 409 and "restore" in upload.text.lower()
+    quick_rename = client.put(f"/api/tasks/{task['id']}/quick-rename", json={"task_name": "Other name"})
+    assert quick_rename.status_code == 409 and "restore" in quick_rename.text.lower()
+
+    new_capture = client.post("/api/quick-record", json={"app_name": "Editor", "task_name": "New capture"}).json()
+    merge = client.post(f"/api/sessions/{new_capture['session_id']}/name", json={
+        "app_name": "Editor", "task_name": "Archive me",
+    })
+    assert merge.status_code == 409 and "restore" in merge.text.lower()
+    assert len(client.get(f"/api/training/tasks/{task['id']}").json()["versions"]) == 2
+
+    # Reopening the app reads persisted archive state from the migrated database.
+    restarted = TestClient(create_app(tmp_path / "data"))
+    assert restarted.get(f"/api/training/tasks/{task['id']}").json()["archived"] is True
+    unarchived = restarted.post(f"/api/training/tasks/{task['id']}/unarchive")
+    assert unarchived.status_code == 200 and unarchived.json()["archived"] is False
+    assert unarchived.json()["archived_at"] is None
+    assert restarted.post(f"/api/training/tasks/{task['id']}/edit", json={"base_version": 2}).status_code == 200
+
+
+def test_archive_column_migrates_existing_training_schema(client, tmp_path):
+    app = create_app_task(client, "Editor")
+    task = create_task_name_only(client, app["id"], "Legacy task")
+    with client.app.state.store.connect() as db:
+        db.execute("ALTER TABLE training_tasks DROP COLUMN archived_at")
+
+    restarted = TestClient(create_app(tmp_path / "data"))
+    detail = restarted.get(f"/api/training/tasks/{task['id']}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["archived"] is False
+    assert detail.json()["archived_at"] is None
+
+
+def test_settings_save_creates_one_editable_version_atomically_and_rejects_collisions(client):
+    app = create_app_task(client, "Editor")
+    task = create_task(client, app["id"], "Old title")
+    sid = task["session"]["id"]
+    procedure = {"revision": 2, "steps": [
+        {"goal": "Select report", "check": "Report is selected", "action": "select_media", "target": "Media", "input": "filename"},
+        {"goal": "Enter details", "check": "Details are visible", "action": "fill", "target": "Report", "input": "caption"},
+        {"goal": "Save report", "check": "Report is saved", "action": "click", "target": "Save"},
+        {"goal": "Verify report", "check": "Saved report matches", "action": "verify_draft"},
+    ]}
+    original_update = client.put(f"/api/sessions/{sid}", json={
+        "notes": "original notes", "procedure": procedure,
+    })
+    assert original_update.status_code == 200, original_update.text
+    upload = client.post(f"/api/sessions/{sid}/media", content=b"retained source media",
+                         headers={"content-type": "video/webm"})
+    assert upload.status_code == 200
+    other = create_task_name_only(client, app["id"], "Taken title")
+
+    saved = client.put(f"/api/training/tasks/{task['id']}/settings", json={
+        "base_version": 1, "name": "New title", "description": "New goal",
+        "done": "New check", "notes": "Updated notes",
+    })
+    assert saved.status_code == 200, saved.text
+    latest = saved.json()
+    assert latest["latest_version"] == 2
+    assert latest["name"] == "New title"
+    assert latest["session"]["title"] == "New title"
+    assert latest["session"]["answers"]["teaching_task_name"] == "New title"
+    assert latest["session"]["answers"]["teaching_goal"] == "New goal"
+    assert latest["session"]["answers"]["teaching_done"] == "New check"
+    assert latest["session"]["notes"] == "Updated notes"
+    assert latest["session"]["procedure"] == procedure
+    assert latest["session"]["media_url"] == f"/api/sessions/{latest['session']['id']}/media"
+    assert client.get(f"/api/sessions/{latest['session']['id']}/media").content == b"retained source media"
+    assert client.get(f"/api/sessions/{sid}").json()["notes"] == "original notes"
+    assert client.get(f"/api/sessions/{sid}").json()["title"] == "Old title"
+    assert client.get(f"/api/sessions/{sid}").json()["procedure"] == procedure
+    listed_tasks = client.get("/api/training/apps").json()["apps"][0]["tasks"]
+    assert any(item["id"] == task["id"] and item["name"] == "New title" for item in listed_tasks)
+
+    no_op = client.put(f"/api/training/tasks/{task['id']}/settings", json={
+        "base_version": 2, "name": "New title", "description": "New goal",
+        "done": "New check", "notes": "Updated notes",
+    })
+    assert no_op.status_code == 200 and no_op.json()["latest_version"] == 2
+    assert len(no_op.json()["versions"]) == 2
+    stale = client.put(f"/api/training/tasks/{task['id']}/settings", json={
+        "base_version": 1, "name": "Stale title", "description": "", "done": "", "notes": "",
+    })
+    assert stale.status_code == 409
+    duplicate = client.put(f"/api/training/tasks/{task['id']}/settings", json={
+        "base_version": 2, "name": "Taken title", "description": "", "done": "", "notes": "",
+    })
+    assert duplicate.status_code == 409
+    assert client.get(f"/api/training/tasks/{other['id']}").json()["name"] == "Taken title"
+
+
 def test_name_only_approval_blocked_until_recording_confirmed(client):
     app = create_app_task(client)
     task = create_task_name_only(client, app["id"], "Export a PDF")

@@ -5,6 +5,11 @@ The FastAPI workspace binds to loopback. Runtime media, SQLite data, proposals a
 ## Workspace API
 
 - `GET /api/status`: current capability labels.
+- `GET /api/training/apps`: active app/task hierarchy; `include_archived=true` also includes archived tasks.
+- `GET /api/training/tasks/{id}`: task, latest session and retained training versions.
+- `PUT /api/training/tasks/{id}/settings`: `base_version`, `name`, optional `description`, `done` and `notes`; atomically creates a new version for changes. A stale version, duplicate name or archived task returns 409; a no-op retains the current version.
+- `POST /api/training/tasks/{id}/archive` and `/unarchive`: reversible organization, preserving media/history. Archived tasks cannot be edited or accept new recordings until unarchived.
+- `POST /api/training/tasks/{id}/restore`: `base_version` and `source_version` copy a historical version into a new one; this is separate from unarchiving.
 - `GET/POST /api/sessions`: list/create workflows.
 - `GET/PUT /api/sessions/{id}`: retrieve or update title, notes, answers and procedure.
 - `GET /api/sessions/{id}/procedure-revisions`: latest 50 saved revisions, newest first; use `next_before_revision` as `before_revision` to page backwards.

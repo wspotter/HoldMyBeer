@@ -177,7 +177,23 @@
         <h1 id="savedTitle" tabindex="-1">Saved tasks</h1>
         <p class="compact-copy">Your tasks and results stay on this computer.</p>
         <p id="savedStatus" role="status" aria-live="polite"></p>
-        <div id="savedList" class="saved-list"></div>
+        <label class="saved-archived-toggle"><input id="savedShowArchived" type="checkbox" /> Show archived</label>
+        <div id="savedWorkspace" class="saved-workspace">
+          <aside class="saved-sidebar" aria-label="Saved apps and tasks">
+            <div id="savedList" class="saved-list">
+              <div id="savedTree" class="saved-tree" aria-live="polite"></div>
+              <div id="savedLegacyList" class="saved-legacy-list"></div>
+            </div>
+          </aside>
+          <section id="savedEditor" class="saved-editor" aria-label="Selected task">
+            <div class="saved-editor-empty"><strong>Choose a task</strong><p>Its recording and editable settings will appear here.</p></div>
+          </section>
+        </div>
+        <div id="savedDirtyPrompt" class="saved-dirty-prompt" role="alert" hidden>
+          <span>You have unsaved changes.</span>
+          <button id="savedDiscardChanges" class="quiet" type="button">Discard changes</button>
+          <button id="savedKeepEditing" class="quiet" type="button">Keep editing</button>
+        </div>
       </section>
     </main>
     <section id="advancedView" hidden aria-label="Advanced recording workspace">

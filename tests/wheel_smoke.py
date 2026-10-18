@@ -74,6 +74,19 @@ def main():
             assert copied.content == original.content == retained_media
             assert httpx.put(base + f"/api/sessions/{old_sid}", json={"notes": "old version is frozen"}).status_code == 409
             assert httpx.put(base + f"/api/sessions/{new_sid}", json={"notes": "new draft is editable"}).status_code == 200
+            task_url = base + f"/api/training/tasks/{first['id']}"
+            settings = httpx.put(task_url + "/settings", json={"base_version": 2, "name": "Renamed first task",
+                "description": "Save a file", "done": "Receipt visible", "notes": "Installed settings check"})
+            assert settings.status_code == 200, settings.text
+            version_three = settings.json()
+            assert version_three["latest_version"] == 3
+            assert httpx.get(base + f"/api/sessions/{version_three['session']['id']}/media").content == retained_media
+            assert httpx.post(task_url + "/archive").json()["archived"] is True
+            active_tasks = httpx.get(base + "/api/training/apps").json()["apps"][0]["tasks"]
+            assert len(active_tasks) == 1 and active_tasks[0]["id"] == second["id"]
+            assert httpx.put(task_url + "/settings", json={"base_version": 3, "name": "Blocked"}).status_code == 409
+            restored = httpx.post(task_url + "/unarchive").json()
+            assert restored["archived"] is False and len(restored["versions"]) == 3
             session = httpx.post(base + "/api/sessions", json={"title": "Installed wheel check"}).json()
             steps = [
                 {"goal": "Upload", "check": "Fresh filename", "action": "upload", "target": "Media", "input": "filename"},
@@ -101,7 +114,7 @@ def main():
                         assert not result.isError
                         assert session["id"] in json.dumps(result.model_dump())
             asyncio.run(protocol())
-            print("Installed wheel: packaged assets, two independent app tasks, versioned edit with retained media, reviewed Chromium trial, screenshot, and eight-tool MCP history passed")
+            print("Installed wheel: packaged assets, two independent app tasks, versioned settings with retained media, archive/restore, reviewed Chromium trial, screenshot, and eight-tool MCP history passed")
         finally:
             server.should_exit = True
             worker.join(timeout=5)

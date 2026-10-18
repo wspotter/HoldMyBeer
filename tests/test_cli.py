@@ -387,3 +387,125 @@ def test_doctor_stays_read_only(monkeypatch):
     monkeypatch.setattr(backend, "create_app", _spy_create_app)
     report = cli.build_doctor_report()
     assert report["version"] == __version__
+
+
+def test_cli_list_empty(tmp_path, capsys):
+    data_dir = tmp_path / "data"
+    code = cli.main(["list", "--data-dir", str(data_dir)])
+    assert code == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "No workflows found" in out
+
+
+def test_cli_list_and_run_with_recipes(tmp_path, capsys):
+    from holdmybeer.app import Store
+    from holdmybeer.hybrid import HybridRecipe, HybridParameter, HybridStep, save_hybrid_recipe
+    data_dir = tmp_path / "data"
+    store = Store(data_dir)
+    recipe = HybridRecipe(
+        task_id="task-cli-test-1",
+        title="Lookup Domain In Terminal",
+        app_name="terminal",
+        parameters=[
+            HybridParameter(name="target_host", type="string", description="Domain name", default="yahoo.com", required=True),
+        ],
+        steps=[
+            HybridStep(
+                id="s1",
+                action="browser_or_fixture_action",
+                goal="nslookup target domain",
+                check="nslookup command finished",
+                params={"command": "nslookup {target_host}"},
+            )
+        ],
+        trigger_phrases=["Hey Ollie, run nslookup in terminal"],
+    )
+    save_hybrid_recipe(store, recipe.task_id, recipe)
+
+    # Test list command
+    code_list = cli.main(["list", "--data-dir", str(data_dir)])
+    assert code_list == cli.EXIT_OK
+    out_list = capsys.readouterr().out
+    assert "Lookup Domain In Terminal" in out_list
+    assert "lookup_domain_in_terminal" in out_list
+    assert "target_host" in out_list
+    assert "Hey Ollie, run nslookup in terminal" in out_list
+
+    # Test run command in safe sandbox dry-run
+    code_run = cli.main(["run", "lookup_domain_in_terminal", "target_host=yahoo.com", "--data-dir", str(data_dir)])
+    assert code_run == cli.EXIT_OK
+    out_run = capsys.readouterr().out
+    assert "HoldMyBeer Execution Receipt" in out_run
+    assert "Safe Sandbox Simulation" in out_run
+    assert "yahoo.com" in out_run
+    assert "STATUS: VERIFIED" in out_run
+
+    # Test run with --json
+    code_json = cli.main(["run", "lookup_domain_in_terminal", "target_host=yahoo.com", "--data-dir", str(data_dir), "--json"])
+    assert code_json == cli.EXIT_OK
+    out_json = capsys.readouterr().out
+    parsed = json.loads(out_json)
+    assert parsed["status"] == "verified"
+    assert parsed["bound_parameters"]["target_host"] == "yahoo.com"
+
+
+def test_cli_run_missing_target_fails(capsys):
+    code = cli.main(["run"])
+    assert code == cli.EXIT_ERROR
+    err = capsys.readouterr().err
+    assert "missing target" in err
+
+
+def test_cli_tui_exits_cleanly_on_empty(tmp_path, capsys):
+    data_dir = tmp_path / "data"
+    code = cli.main(["tui", "--data-dir", str(data_dir)])
+    assert code == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "Terminal Skill Runner" in out
+    assert "No workflows found" in out
+
+
+def test_cli_tui_interactive_flow(tmp_path, monkeypatch, capsys):
+    from holdmybeer.app import Store
+    from holdmybeer.hybrid import HybridRecipe, HybridParameter, HybridStep, save_hybrid_recipe
+    import io
+
+    data_dir = tmp_path / "data"
+    store = Store(data_dir)
+    recipe = HybridRecipe(
+        task_id="task-cli-test-2",
+        title="Ping Host In Terminal",
+        app_name="terminal",
+        parameters=[
+            HybridParameter(name="host", type="string", description="Host to ping", default="127.0.0.1", required=True),
+        ],
+        steps=[
+            HybridStep(
+                id="s1",
+                action="browser_or_fixture_action",
+                goal="ping host",
+                check="ping completed",
+                params={"command": "ping -c 1 {host}"},
+            )
+        ],
+        trigger_phrases=["Hey Ollie, ping host in terminal"],
+    )
+    save_hybrid_recipe(store, recipe.task_id, recipe)
+
+    # Simulate user entering:
+    # 1. "1" (select workflow 1)
+    # 2. "" (accept default parameter "127.0.0.1")
+    # 3. "1" (select sandbox mode)
+    # 4. "q" (quit)
+    inputs = io.StringIO("1\n\n1\nq\n")
+    monkeypatch.setattr("sys.stdin", inputs)
+
+    code = cli.main(["tui", "--data-dir", str(data_dir)])
+    assert code == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "Terminal Skill Runner" in out
+    assert "Ping Host In Terminal" in out
+    assert "Outcome: VERIFIED" in out
+    assert "Goodbye!" in out
+
+

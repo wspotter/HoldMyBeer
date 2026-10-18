@@ -445,10 +445,267 @@ def cmd_export_skill(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_list(args: argparse.Namespace) -> int:
+    from .app import Store
+    from .hybrid import list_hybrid_recipes
+    data_dir = _resolve_data_dir(args.data_dir)
+    store = Store(data_dir)
+    recipes = list_hybrid_recipes(store)
+
+    if getattr(args, "json", False):
+        print(json.dumps([r.model_dump() for r in recipes], indent=2))
+        return EXIT_OK
+
+    if not recipes:
+        print(f"HoldMyBeer Workflows: No workflows found in {data_dir}")
+        print("Teach a workflow first using the web UI (holdmybeer) or teach endpoint.")
+        return EXIT_OK
+
+    print(f"🍺 HoldMyBeer Workflows ({len(recipes)} available):")
+    print("-" * 65)
+    for idx, r in enumerate(recipes, 1):
+        params_str = ", ".join(f"{p.name} ({p.type})" for p in r.parameters) or "none"
+        trigger = r.trigger_phrases[0] if r.trigger_phrases else f"Hey Ollie, run {r.title} in {r.app_name}"
+        print(f"[{idx}] {r.title}")
+        print(f"    Slug:       {r.slug()}")
+        print(f"    App:        {r.app_name}")
+        print(f"    Params:     {params_str}")
+        print(f"    Voice:      “{trigger}”")
+        print(f"    Task ID:    {r.task_id}")
+        if idx < len(recipes):
+            print("-" * 65)
+    print("=" * 65)
+    print("Run via CLI:  holdmybeer run <slug_or_number> [param=value]")
+    print("Interactive:  holdmybeer tui")
+    return EXIT_OK
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    target = getattr(args, "target", None)
+    if not target:
+        print("holdmybeer run: missing target skill/workflow name, slug, or ID.", file=sys.stderr)
+        print("Usage: holdmybeer run <slug_or_number_or_id> [param=val ...]", file=sys.stderr)
+        return EXIT_ERROR
+
+    from .app import Store
+    from .hybrid import list_hybrid_recipes, resolve_task_or_session_recipe, run_hybrid_recipe
+    data_dir = _resolve_data_dir(args.data_dir)
+    store = Store(data_dir)
+    recipes = list_hybrid_recipes(store)
+
+    chosen_recipe = None
+    # 1. Match by numeric index if user typed a number
+    if target.isdigit():
+        idx = int(target)
+        if 1 <= idx <= len(recipes):
+            chosen_recipe = recipes[idx - 1]
+
+    # 2. Match by exact slug or task_id or recipe_id
+    if chosen_recipe is None:
+        target_lower = target.lower().strip()
+        for r in recipes:
+            if r.slug() == target_lower or r.task_id == target or r.recipe_id == target:
+                chosen_recipe = r
+                break
+
+    # 3. Match by case-insensitive title or slug substring
+    if chosen_recipe is None:
+        target_lower = target.lower().strip()
+        for r in recipes:
+            if target_lower in r.title.lower() or target_lower in r.slug():
+                chosen_recipe = r
+                break
+
+    # 4. Fallback to resolve_task_or_session_recipe
+    if chosen_recipe is None:
+        try:
+            chosen_recipe = resolve_task_or_session_recipe(store, target)
+        except Exception:
+            chosen_recipe = None
+
+    if chosen_recipe is None:
+        print(f"holdmybeer run: could not find workflow matching '{target}'.", file=sys.stderr)
+        print("Run 'holdmybeer list' to view available workflows.", file=sys.stderr)
+        return EXIT_ERROR
+
+    # Parse parameters
+    raw_params = list(getattr(args, "params", []) or [])
+    bound_params: dict[str, Any] = {}
+
+    if len(raw_params) == 1 and "=" not in raw_params[0]:
+        if chosen_recipe.parameters:
+            bound_params[chosen_recipe.parameters[0].name] = raw_params[0]
+        else:
+            bound_params["input_text"] = raw_params[0]
+    else:
+        for p in raw_params:
+            if "=" in p:
+                k, v = p.split("=", 1)
+                bound_params[k.strip()] = v.strip()
+            else:
+                bound_params[p.strip()] = ""
+
+    dry_run = not getattr(args, "live", False)
+    target_dir = getattr(args, "target_dir", None)
+
+    try:
+        res = run_hybrid_recipe(
+            chosen_recipe,
+            parameters=bound_params,
+            target_dir=target_dir,
+            dry_run=dry_run,
+            user_approved_understanding=not dry_run,
+        )
+    except Exception as exc:
+        print(f"holdmybeer run: error executing workflow: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    if getattr(args, "json", False):
+        print(json.dumps(res, indent=2))
+        return EXIT_OK if res.get("status") in {"verified", "success"} else EXIT_ERROR
+
+    mode_label = "Safe Sandbox Simulation (Dry Run)" if dry_run else "LIVE REPLAY"
+    print(f"🍺 HoldMyBeer Execution Receipt")
+    print("=" * 65)
+    print(f"  Workflow:   {chosen_recipe.title} (slug: {chosen_recipe.slug()})")
+    print(f"  App:        {chosen_recipe.app_name}")
+    print(f"  Mode:       {mode_label}")
+    print(f"  Parameters: {res.get('bound_parameters', bound_params)}")
+    print("-" * 65)
+    print("  Execution Steps:")
+    for step in res.get("steps", []):
+        sid = step.get("id", "step")
+        goal = step.get("goal", "")
+        print(f"    ✓ [{sid}] {goal}")
+    print("-" * 65)
+    status = res.get("status", "unknown").upper()
+    if status in {"VERIFIED", "SUCCESS"}:
+        print(f"  Outcome:    STATUS: {status} ✨")
+        diff = res.get("before_after_diff") or {}
+        changes = diff.get("changes") or []
+        if dry_run:
+            print(f"  Sandbox:    Isolated ({len(changes)} simulated changes, 0 real files mutated)")
+        else:
+            print(f"  Real Files: {len(changes)} changes applied")
+    else:
+        print(f"  Outcome:    STATUS: {status}")
+        snap = res.get("diagnostic_snapshot") or {}
+        if snap:
+            print(f"  Issue:      {snap.get('error_reason')}")
+            print(f"  Suggested:  {snap.get('suggested_recovery_prompt')}")
+    print("=" * 65)
+    return EXIT_OK if res.get("status") in {"verified", "success"} else EXIT_ERROR
+
+
+def cmd_tui(args: argparse.Namespace) -> int:
+    from .app import Store
+    from .hybrid import list_hybrid_recipes, run_hybrid_recipe
+    data_dir = _resolve_data_dir(args.data_dir)
+    store = Store(data_dir)
+
+    print("\n" + "=" * 65)
+    print("🍺 HoldMyBeer — Terminal Skill Runner (TUI)")
+    print("=" * 65)
+
+    recipes = list_hybrid_recipes(store)
+    if not recipes:
+        print(f"No workflows found in: {data_dir}")
+        print("Teach your first workflow by starting the preview: holdmybeer\n")
+        return EXIT_OK
+
+    while True:
+        print("\nAvailable Workflows:")
+        for idx, r in enumerate(recipes, 1):
+            trigger = r.trigger_phrases[0] if r.trigger_phrases else f"Hey Ollie, run {r.title} in {r.app_name}"
+            params_str = ", ".join(f"{p.name}" for p in r.parameters) or "none"
+            print(f"  [{idx}] {r.title} (App: {r.app_name})")
+            print(f"      Params: {params_str} | Voice: “{trigger}”")
+        print("  [q] Quit")
+        print("-" * 65)
+
+        try:
+            choice = input(f"Select a workflow to run [1-{len(recipes)}, q]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nExiting HoldMyBeer TUI.")
+            return EXIT_OK
+
+        if choice.lower() in {"q", "quit", "exit"}:
+            print("Goodbye! 🍺")
+            return EXIT_OK
+
+        chosen_recipe = None
+        if choice.isdigit() and 1 <= int(choice) <= len(recipes):
+            chosen_recipe = recipes[int(choice) - 1]
+        else:
+            for r in recipes:
+                if choice.lower() == r.slug() or choice.lower() in r.title.lower():
+                    chosen_recipe = r
+                    break
+
+        if chosen_recipe is None:
+            print(f"Invalid selection: '{choice}'. Please pick a number from 1 to {len(recipes)}.")
+            continue
+
+        print(f"\nSelected: {chosen_recipe.title} (App: {chosen_recipe.app_name})")
+        bound_params: dict[str, Any] = {}
+        for p in chosen_recipe.parameters:
+            default_val = p.default or ""
+            prompt_str = f"  Parameter '{p.name}'"
+            if default_val:
+                prompt_str += f" [{default_val}]"
+            prompt_str += ": "
+            try:
+                val = input(prompt_str).strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\nCanceled.")
+                return EXIT_OK
+            bound_params[p.name] = val if val else default_val
+
+        print("\nExecution Mode:")
+        print("  [1] Safe Sandbox Simulation (Dry Run) [default]")
+        print("  [2] Live Replay")
+        try:
+            mode_choice = input("Select mode [1/2, default 1]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nCanceled.")
+            return EXIT_OK
+
+        is_live = mode_choice == "2"
+        dry_run = not is_live
+
+        print(f"\n> Running '{chosen_recipe.title}' in {'safe sandbox' if dry_run else 'LIVE mode'}...")
+        try:
+            res = run_hybrid_recipe(
+                chosen_recipe,
+                parameters=bound_params,
+                dry_run=dry_run,
+                user_approved_understanding=is_live,
+            )
+            print("-" * 65)
+            for step in res.get("steps", []):
+                print(f"  ✓ [{step.get('id', 'step')}] {step.get('goal', '')}")
+            status = res.get("status", "unknown").upper()
+            if status in {"VERIFIED", "SUCCESS"}:
+                print(f"Outcome: {status} ✨ ({'Simulated in sandbox' if dry_run else 'Applied live'})\n")
+            else:
+                print(f"Outcome: {status}\n")
+        except Exception as exc:
+            print(f"Execution error: {exc}\n")
+
+        try:
+            cont = input("Run another workflow? [Y/n]: ").strip().lower()
+            if cont in {"n", "no", "q"}:
+                print("Goodbye! 🍺")
+                return EXIT_OK
+        except (EOFError, KeyboardInterrupt):
+            print("\nExiting HoldMyBeer TUI.")
+            return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="holdmybeer",
-        description="Launch the local HoldMyBeer preview, check dependencies, or configure an explicit Hermes home.",
+        description="Launch the local HoldMyBeer preview, check dependencies, configure an explicit Hermes home, list or run workflows, or launch the interactive TUI.",
         epilog=(
             "The preview binds loopback only by default. Use --host to change the "
             "interface, --port to change the port, and --data-dir to store data "
@@ -464,14 +721,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "command",
         nargs="?",
-        choices=["doctor", "connect", "agents", "universal-status", "export-skill"],
-        help="Run doctor, configure a client, inspect universal agents, export a skill, or launch the preview when omitted.",
+        choices=["doctor", "connect", "agents", "universal-status", "export-skill", "list", "run", "tui"],
+        help="Run doctor, configure a client, inspect universal agents, export a skill, list skills, run a skill, interactive TUI, or launch the preview when omitted.",
     )
     parser.add_argument(
-        "client",
+        "target",
         nargs="?",
-        choices=["hermes"],
-        help="Client to configure after the connect command.",
+        help="Target skill name/slug/ID for 'run', or client name for 'connect' (e.g. hermes).",
+    )
+    parser.add_argument(
+        "params",
+        nargs="*",
+        help="Optional parameter bindings for 'run' in key=value format (e.g. input_text=yahoo.com).",
     )
     # Launch options.
     parser.add_argument(
@@ -516,6 +777,24 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="DIR",
         help="Destination directory for 'export-skill'.",
     )
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        default=False,
+        help="Run live against real target files/apps instead of safe sandbox simulation.",
+    )
+    parser.add_argument(
+        "--target-dir",
+        default=None,
+        metavar="DIR",
+        help="Optional target directory for 'run'.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Output raw JSON results for 'list' or 'run'.",
+    )
     return parser
 
 
@@ -525,20 +804,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if getattr(args, "command", None) == "doctor":
-        if getattr(args, "client", None) is not None or getattr(args, "home", None) is not None or getattr(args, "url", DEFAULT_HMB_URL) != DEFAULT_HMB_URL:
+        if getattr(args, "target", None) is not None or getattr(args, "home", None) is not None or getattr(args, "url", DEFAULT_HMB_URL) != DEFAULT_HMB_URL:
             print("holdmybeer: client names, --home and --url require 'connect hermes'", file=sys.stderr)
             return EXIT_ERROR
         return cmd_doctor(args)
     if getattr(args, "command", None) == "connect":
-        if getattr(args, "client", None) != "hermes":
+        if getattr(args, "target", None) != "hermes":
             print("holdmybeer: choose a client: connect hermes", file=sys.stderr)
             return EXIT_ERROR
+        args.client = args.target
         return cmd_connect_hermes(args)
     if getattr(args, "command", None) in {"agents", "universal-status"}:
         return cmd_universal_agents(args)
     if getattr(args, "command", None) == "export-skill":
         return cmd_export_skill(args)
-    if getattr(args, "client", None) is not None or getattr(args, "home", None) is not None or getattr(args, "url", DEFAULT_HMB_URL) != DEFAULT_HMB_URL:
+    if getattr(args, "command", None) == "list":
+        return cmd_list(args)
+    if getattr(args, "command", None) == "run":
+        return cmd_run(args)
+    if getattr(args, "command", None) == "tui":
+        return cmd_tui(args)
+    if getattr(args, "command", None) not in {"run", "connect"} and (getattr(args, "target", None) is not None or getattr(args, "home", None) is not None or getattr(args, "url", DEFAULT_HMB_URL) != DEFAULT_HMB_URL):
         print("holdmybeer: --home, --url and client names require 'connect hermes'", file=sys.stderr)
         return EXIT_ERROR
     try:

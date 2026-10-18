@@ -470,31 +470,14 @@
 
     const badge = text => { if ($("mcStepBadge")) $("mcStepBadge").textContent = text; };
     const state = {
-      app: reviewData.detected_app || reviewData.app_name || "",
-      task: (reviewData.task_options || reviewData.suggested_names || [])[0] || reviewData.task_name || "",
+      app: "",
+      task: "",
       taskId: reviewData.task_id,
       choices: {},
     };
     const rawQuestions = reviewData.adaptive_questions || reviewData.multiple_choice_questions || [];
     let questions = rawQuestions.slice(0, 3);
     for (const q of questions) state.choices[q.id] = q.selected || q.options?.[0]?.id || "";
-
-    function chipRow(options, current, onPick) {
-      const row = document.createElement("div");
-      row.className = "mc-pill-row";
-      const pills = [];
-      for (const value of options) {
-        const pill = document.createElement("button");
-        pill.type = "button";
-        pill.className = "mc-name-pill" + (value === current ? " selected" : "");
-        pill.textContent = value;
-        pill.onclick = () => { for (const other of pills) other.classList.toggle("selected", other === pill); onPick(value); };
-        pills.push(pill);
-        row.append(pill);
-      }
-      row.sync = value => { for (const pill of pills) pill.classList.toggle("selected", pill.textContent === value); };
-      return row;
-    }
 
     // ---------- Page 1: Name it ----------
     function pageName() {
@@ -512,21 +495,112 @@
       const fields = document.createElement("div");
       fields.className = "hmb-fields";
 
+      // 1. App Picker (Dropdown of previous apps + text input to write a new one)
       const appLabel = add("label", "App", fields); appLabel.htmlFor = "hmbAppInput";
-      const appInput = document.createElement("input");
-      appInput.id = "hmbAppInput"; appInput.maxLength = 100; appInput.value = state.app;
-      appInput.placeholder = "e.g. GIMP, MS Word";
-      fields.append(appInput);
-      const appChips = chipRow(reviewData.app_options || [], state.app, value => { appInput.value = value; validate(); });
-      fields.append(appChips);
+      const appPicker = document.createElement("div");
+      appPicker.className = "hmb-app-picker";
 
+      const appInput = document.createElement("input");
+      appInput.id = "hmbAppInput";
+      appInput.setAttribute("list", "hmbAppList");
+      appInput.maxLength = 100;
+      appInput.value = state.app || "";
+      appInput.placeholder = "Select an app or write a new one…";
+      appPicker.append(appInput);
+
+      const datalist = document.createElement("datalist");
+      datalist.id = "hmbAppList";
+      appPicker.append(datalist);
+
+      const appSelect = document.createElement("select");
+      appSelect.id = "hmbAppSelect";
+      appSelect.className = "hmb-app-select";
+      appSelect.setAttribute("aria-label", "Previous app names");
+      appPicker.append(appSelect);
+
+      fields.append(appPicker);
+
+      const appHint = document.createElement("small");
+      appHint.className = "hmb-field-hint";
+      appHint.textContent = "Enter the name of your app";
+      fields.append(appHint);
+
+      // Populate previous app names
+      let appOptions = Array.from(new Set([
+        ...(reviewData.app_options || []),
+        ...(reviewData.detected_app ? [reviewData.detected_app] : []),
+      ])).filter(Boolean);
+
+      function populateAppDropdown(options) {
+        datalist.replaceChildren();
+        appSelect.replaceChildren();
+
+        const defaultOpt = document.createElement("option");
+        defaultOpt.value = "";
+        defaultOpt.textContent = "Choose previous app… ▼";
+        appSelect.append(defaultOpt);
+
+        for (const opt of options) {
+          const dOpt = document.createElement("option");
+          dOpt.value = opt;
+          datalist.append(dOpt);
+
+          const sOpt = document.createElement("option");
+          sOpt.value = opt;
+          sOpt.textContent = opt;
+          appSelect.append(sOpt);
+        }
+
+        const newOpt = document.createElement("option");
+        newOpt.value = "__new__";
+        newOpt.textContent = "✏️ Or write a new app name…";
+        appSelect.append(newOpt);
+
+        if (state.app && options.includes(state.app)) {
+          appSelect.value = state.app;
+        }
+      }
+      populateAppDropdown(appOptions);
+
+      // Also merge any other registered apps from the database
+      request("/api/training/apps").then(res => {
+        if (res && res.apps) {
+          let updated = false;
+          for (const a of res.apps) {
+            if (a.name && !appOptions.includes(a.name)) {
+              appOptions.push(a.name);
+              updated = true;
+            }
+          }
+          if (updated) populateAppDropdown(appOptions);
+        }
+      }).catch(() => {});
+
+      appSelect.onchange = () => {
+        if (appSelect.value === "__new__") {
+          appInput.value = "";
+          appInput.focus();
+        } else if (appSelect.value) {
+          appInput.value = appSelect.value;
+          state.app = appSelect.value;
+          taskInput.focus();
+        }
+        validate();
+      };
+
+      // 2. Task Name (Friendly name, blank by default)
       const taskLabel = add("label", "Task", fields); taskLabel.htmlFor = "hmbTaskInput";
       const taskInput = document.createElement("input");
-      taskInput.id = "hmbTaskInput"; taskInput.maxLength = 160; taskInput.value = state.task;
-      taskInput.placeholder = "e.g. Resize image to 1080px";
+      taskInput.id = "hmbTaskInput";
+      taskInput.maxLength = 160;
+      taskInput.value = state.task || "";
+      taskInput.placeholder = "e.g. Resize image to 1080px, Organize files…";
       fields.append(taskInput);
-      const taskChips = chipRow(reviewData.task_options || reviewData.suggested_names || [], state.task, value => { taskInput.value = value; validate(); });
-      fields.append(taskChips);
+
+      const taskHint = document.createElement("small");
+      taskHint.className = "hmb-field-hint";
+      taskHint.textContent = "Enter a friendly name for this task";
+      fields.append(taskHint);
 
       if (currentMode === "admin") {
         const adminBox = document.createElement("div");
@@ -550,13 +624,30 @@
       const next = add("button", "Looks right →", target, "mc-approve-btn");
       next.id = "hmbNameNext"; next.type = "button";
       const note = add("p", "", target, "task-status");
+
       function validate() {
-        appChips.sync(appInput.value.trim()); taskChips.sync(taskInput.value.trim());
-        next.disabled = !appInput.value.trim() || !taskInput.value.trim();
+        const appVal = appInput.value.trim();
+        const taskVal = taskInput.value.trim();
+        state.app = appVal;
+        state.task = taskVal;
+        next.disabled = !appVal || !taskVal;
       }
-      appInput.oninput = validate; taskInput.oninput = validate;
-      for (const input of [appInput, taskInput]) input.onkeydown = event => { if (event.key === "Enter" && !next.disabled) next.click(); };
+
+      appInput.oninput = () => {
+        if (appOptions.includes(appInput.value.trim())) {
+          appSelect.value = appInput.value.trim();
+        } else {
+          appSelect.value = "";
+        }
+        validate();
+      };
+      taskInput.oninput = validate;
+
+      for (const input of [appInput, taskInput]) {
+        input.onkeydown = event => { if (event.key === "Enter" && !next.disabled) next.click(); };
+      }
       validate();
+
       next.onclick = async () => {
         next.disabled = true; next.textContent = "Saving…";
         try {
@@ -575,6 +666,7 @@
           next.disabled = false; next.textContent = "Looks right →";
         }
       };
+
       (appInput.value ? taskInput : appInput).focus();
     }
 

@@ -77,7 +77,9 @@ def test_browser_instant_record_button_opens_record_stage_with_recipe_card_and_s
             expect(page.get_by_role("button", name="Choose app & task first", exact=True)).to_be_visible()
             instant_btn = page.locator("#quickRecordBegin")
             expect(instant_btn).to_be_hidden()
-            page.get_by_role("button", name="Advanced", exact=True).click()
+            page.get_by_role("button", name="Settings", exact=True).click()
+            page.locator("#settingsDeveloperTools > summary").click()
+            page.locator("#openDeveloperTools").click()
             expect(instant_btn).to_be_visible()
             expect(instant_btn).to_contain_text("LikeThis (Instant Record)")
 

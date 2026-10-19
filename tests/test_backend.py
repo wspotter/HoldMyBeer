@@ -128,7 +128,9 @@ def test_browser_saves_changed_steps_as_new_revision_and_preserves_conflicting_e
         try:
             page = browser.new_page()
             page.goto(base)
-            page.get_by_role("button", name="Advanced", exact=True).click()
+            page.get_by_role("button", name="Settings", exact=True).click()
+            page.locator("#settingsDeveloperTools > summary").click()
+            page.locator("#openDeveloperTools").click()
             assert httpx.get(base + "/api/sessions").json()["sessions"] == []
             page.get_by_role("button", name="New workflow").click()
             expect(page.locator("#sessions button.selected")).to_be_visible()
@@ -175,7 +177,9 @@ def test_guided_demo_preserves_dirty_workflow_and_requires_explicit_review(serve
         try:
             page = browser.new_page()
             page.goto(base)
-            page.get_by_role("button", name="Advanced", exact=True).click()
+            page.get_by_role("button", name="Settings", exact=True).click()
+            page.locator("#settingsDeveloperTools > summary").click()
+            page.locator("#openDeveloperTools").click()
             expect(page.locator("#sessions button.selected")).to_be_visible()
             expect(page.locator("#notes")).to_have_value("Saved personal notes")
             page.locator("#notes").fill("Unsaved personal edit")
@@ -265,7 +269,9 @@ def test_guided_demo_retry_after_refresh_failure_restores_practice_procedure(ser
         try:
             page = browser.new_page()
             page.goto(base)
-            page.get_by_role("button", name="Advanced", exact=True).click()
+            page.get_by_role("button", name="Settings", exact=True).click()
+            page.locator("#settingsDeveloperTools > summary").click()
+            page.locator("#openDeveloperTools").click()
             expect(page.locator("#sessions button.selected")).to_be_visible()
             expect(page.locator("#title")).to_have_value("Existing workflow")
             failed = {"refresh": False}
@@ -465,7 +471,7 @@ def test_compact_first_use_requires_fresh_consent_and_retains_readable_result(se
             expect(page.locator("#demoBegin")).to_be_hidden()
             expect(page.locator("#advancedView")).to_be_hidden()
             assert httpx.get(base + "/api/sessions").json()["sessions"] == []
-            page.get_by_role("button", name="Advanced", exact=True).click()
+            page.get_by_role("button", name="Settings", exact=True).click()
             page.locator("#demoBegin").click()
             expect(page.locator("#demoRun")).to_be_disabled()
             page.locator("#demoConsent").check()
@@ -518,3 +524,35 @@ def test_compact_first_use_requires_fresh_consent_and_retains_readable_result(se
             assert httpx.get(base + f"/api/sessions/{legacy['id']}").status_code == 200
         finally:
             browser.close()
+
+
+def test_session_list_releases_id_cursor_before_hydrating_sessions(tmp_path, monkeypatch):
+    """An interleaved recorder write must not wait on the session-list reader."""
+    import sqlite3
+    from fastapi.testclient import TestClient
+
+    app = create_app(tmp_path / "data")
+    client = TestClient(app)
+    client.post("/api/sessions", json={"title": "First recording"}).raise_for_status()
+    client.post("/api/sessions", json={"title": "Second recording"}).raise_for_status()
+    original = app.state.store.get_session
+    wrote = False
+
+    def hydrate_with_interleaved_write(ident):
+        nonlocal wrote
+        if not wrote:
+            # A separate recorder connection writes while the listing hydrates
+            # its first row. A live SELECT cursor would keep a shared read lock.
+            db = sqlite3.connect(app.state.store.db_path, timeout=.1)
+            try:
+                db.execute("UPDATE sessions SET data=data WHERE id=?", (ident,))
+                db.commit()
+                wrote = True
+            finally:
+                db.close()
+        return original(ident)
+
+    monkeypatch.setattr(app.state.store, "get_session", hydrate_with_interleaved_write)
+    result = client.get("/api/sessions")
+    assert result.status_code == 200
+    assert wrote and len(result.json()["sessions"]) == 2

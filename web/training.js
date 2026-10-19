@@ -333,6 +333,96 @@
     else { video.hidden = true; add("p", "No recording saved for this task yet.", editor, "saved-no-recording"); }
     editor.append(video);
 
+    const review = add("section", "", editor, "saved-review-handoff task-surface");
+    review.setAttribute("aria-labelledby", "savedReviewTitle");
+    const reviewTitle = add("h3", "Review with your assistant", review); reviewTitle.id = "savedReviewTitle";
+    add("p", "Copy this request and paste it into your connected assistant. LikeThis does not send it or start a review for you.", review, "compact-copy");
+    const hasRecording = !!(selectedSession.id && (selectedSession.media_url || selectedSession.media_path));
+    const requestText = [
+      "Please review this LikeThis task recording. First use the available LikeThis MCP tools to inspect the saved session and its recording frames, then propose a teaching review. Do not execute the task.",
+      `Task: ${historicalName || task.name || "Untitled task"}`,
+      `App: ${task.app_name || apps.find(app => String(app.id) === String(task.app_id))?.name || "Unknown app"}`,
+      `Training task ID: ${task.id}`,
+      `Training version: ${historicalVersion || task.latest_version || "unversioned"}`,
+      `Recording session ID: ${selectedSession.id || "none"}`,
+      "Use hmb_get_session and hmb_recording_frames for the session, then hmb_propose_teaching with the task and version context. Tell me what you found and any uncertainties."
+    ].join("\n");
+    const requestDetails = document.createElement("details"); requestDetails.className = "saved-review-request";
+    add("summary", "Review request", requestDetails);
+    const requestBox = document.createElement("textarea"); requestBox.id = "savedReviewRequest"; requestBox.readOnly = true; requestBox.value = requestText;
+    requestBox.setAttribute("aria-label", "Copyable assistant review request"); requestBox.rows = 7; requestDetails.append(requestBox); review.append(requestDetails);
+    const reviewActions = add("div", "", review, "saved-review-actions");
+    const copyRequest = add("button", "Copy review request", reviewActions, "primary"); copyRequest.id = "savedReviewCopy"; copyRequest.type = "button";
+    copyRequest.disabled = !hasRecording || archived || !!historicalVersion;
+    const settingsLink = add("button", "Assistant setup in Settings", reviewActions, "quiet"); settingsLink.id = "savedReviewSettings"; settingsLink.type = "button";
+    settingsLink.onclick = () => requestSavedAction(() => window.hmbShowView("settings"));
+    const refreshReview = add("button", "Check for assistant review", reviewActions, "quiet"); refreshReview.id = "savedReviewRefresh"; refreshReview.type = "button";
+    refreshReview.disabled = !hasRecording || archived || !!historicalVersion;
+    const copyStatus = add("p", !hasRecording ? "This task has no saved recording to review yet." : archived ? "Restore this archived task to prepare or check its review." : historicalVersion ? "Choose the current version to prepare or check its review." : "Copy the request into your connected assistant, then check here for its saved review.", review, "task-status"); copyStatus.id = "savedReviewStatus"; copyStatus.setAttribute("role", "status"); copyStatus.setAttribute("aria-live", "polite");
+    const reviewResult = add("div", "", review, "saved-review-result"); reviewResult.id = "savedReviewResult"; reviewResult.setAttribute("aria-live", "polite");
+    let reviewPending = false;
+    function setReviewActions() {
+      const blocked = !hasRecording || archived || !!historicalVersion || savedDirty || reviewPending;
+      copyRequest.disabled = blocked;
+      refreshReview.disabled = blocked;
+      if (savedDirty) copyStatus.textContent = "Save your changes before requesting a review.";
+      else if (!hasRecording) copyStatus.textContent = "This task has no saved recording to review yet.";
+      else if (archived) copyStatus.textContent = "Restore this archived task to prepare or check its review.";
+      else if (historicalVersion) copyStatus.textContent = "Choose the current version to prepare or check its review.";
+    }
+    refreshReview.onclick = async () => {
+      if (refreshReview.disabled) return;
+      const sessionId = selectedSession.id;
+      const requestGeneration = savedGeneration;
+      reviewPending = true;
+      setReviewActions();
+      copyStatus.textContent = "Checking the saved assistant review…";
+      reviewResult.replaceChildren();
+      try {
+        const result = await trainingApi(`/api/sessions/${encodeURIComponent(sessionId)}/teaching-review`);
+        if (requestGeneration !== savedGeneration || String(savedDetail?.id) !== String(task.id)) return;
+        if (savedDirty) { copyStatus.textContent = "Save your changes before requesting a review."; return; }
+        const labels = {waiting:"No assistant review saved yet.", stale:"The saved review is out of date and needs a fresh assistant review.", questions:"The assistant has questions to resolve.", ready:"An assistant review is ready for you to review.", approved:"Understanding acknowledged. This did not run the task."};
+        copyStatus.textContent = labels[result.status] || `Saved review status: ${result.status || "unknown"}.`;
+        const proposal = result.proposal;
+        if (!proposal) return;
+        if (proposal.observations?.length) {
+          add("h4", "What the assistant observed", reviewResult);
+          const list = document.createElement("ul");
+          for (const item of proposal.observations) add("li", `${Number(item.timestamp || 0).toFixed(1)}s — ${item.text}`, list);
+          reviewResult.append(list);
+        }
+        if (proposal.questions?.length) {
+          add("h4", "Questions", reviewResult);
+          const list = document.createElement("ul");
+          for (const item of proposal.questions) add("li", item.question, list);
+          reviewResult.append(list);
+        }
+        if (proposal.procedure?.steps?.length) {
+          add("h4", "Proposed steps", reviewResult);
+          const list = document.createElement("ol");
+          for (const step of proposal.procedure.steps) add("li", `${step.goal} — ${step.check}`, list);
+          reviewResult.append(list);
+        }
+      } catch (error) {
+        if (requestGeneration !== savedGeneration || String(savedDetail?.id) !== String(task.id)) return;
+        copyStatus.textContent = `Could not check the saved review. ${error.message} You can retry.`;
+      } finally {
+        reviewPending = false;
+        setReviewActions();
+      }
+    };
+    copyRequest.onclick = async () => {
+      if (copyRequest.disabled || savedDirty) { copyStatus.textContent = "Save your changes before requesting a review."; return; }
+      try {
+        await navigator.clipboard.writeText(requestBox.value);
+        copyStatus.textContent = "Review request copied. Paste it into your connected assistant when you are ready.";
+      } catch {
+        requestDetails.open = true; requestBox.focus(); requestBox.select();
+        copyStatus.textContent = "Select the request above and copy it, then paste it into your connected assistant.";
+      }
+    };
+
     const form = document.createElement("form"); form.id = "savedTaskForm"; form.className = "saved-task-form";
     const fields = [
       ["savedTaskName", "Task title", historicalName || task.name || "", 200],
@@ -362,7 +452,7 @@
       } catch (error) { if (requestGeneration === savedGeneration) { setSavedEditorPending(false, requestGeneration); setStatus("savedStatus", `Could not save changes. ${error.message}`); } }
       finally { busy = false; }
     };
-    for (const input of form.querySelectorAll("input,textarea")) input.addEventListener("input", () => { savedDirty = true; });
+    for (const input of form.querySelectorAll("input,textarea")) input.addEventListener("input", () => { savedDirty = true; setReviewActions(); });
     editor.append(form);
 
     const controls = add("div", "", editor, "saved-editor-actions");

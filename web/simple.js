@@ -4,7 +4,7 @@
   let running = false;
   let pendingAttempt = null;
   const status = message => { $("demoStatus").textContent = message; };
-  const views = ["home", "directed", "demo", "brief", "saved", "advanced"];
+  const views = ["home", "directed", "demo", "brief", "saved", "settings", "advanced"];
   function showView(name) {
     if (!views.includes(name)) return;
     if (recorder?.state === "recording") {
@@ -26,6 +26,8 @@
   });
   $("demoBegin").onclick = () => showView("demo");
   $("openBrief").onclick = () => showView("brief");
+  $("openDeveloperTools").onclick = () => showView("advanced");
+  $("workbenchBackSettings").onclick = () => showView("settings");
   $("directedBegin").onclick = () => { showView("directed"); document.dispatchEvent(new CustomEvent("hmb-new-directed")); };
   const consent = () => { $("demoRun").disabled = running || !!pendingAttempt || !$("demoConsent").checked; };
   $("demoConsent").onchange = () => {

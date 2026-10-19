@@ -1,4 +1,4 @@
-# 0.4.0a3: recording workspace preview
+# 0.4.0a4: recording workspace preview
 
 This preview simplifies the recording workspace and corrects execution-status reporting. The dated `0.3.0a3` receipts below describe an earlier checkout. They do not establish acceptance of this version. No production deployment is included.
 
@@ -14,7 +14,7 @@ Obtain the reviewed wheel and its SHA-256 from the retained release checkpoint. 
 
 ```sh
 python3 -m venv /absolute/path/to/hmb-env
-/absolute/path/to/hmb-env/bin/python -m pip install /absolute/path/to/holdmybeer-0.4.0a3-py3-none-any.whl
+/absolute/path/to/hmb-env/bin/python -m pip install /absolute/path/to/likethis-0.4.0a4-py3-none-any.whl
 /absolute/path/to/hmb-env/bin/python -m playwright install chromium
 /absolute/path/to/hmb-env/bin/holdmybeer doctor
 /absolute/path/to/hmb-env/bin/holdmybeer --data-dir /absolute/private/path/to/hmb-data
@@ -33,7 +33,7 @@ Open the printed HTTP loopback URL and use the recording flow: record or import 
 
 ## Verification and limits
 
-October 18 checks for this version: 158 source tests passed, with one upstream Starlette/httpx deprecation warning. Browser acceptance covered the compact 390px recording/import flow, direct save to the task library without execution, reopening and updating tasks, Admin sample-check failures, escaped metadata, and cancelled capture. Repeated recordings with the same app/task name retain separate media and append task versions without orphaned recipes; tested source tasks cannot be merged into another task. Desktop and phone layouts were also inspected directly. The separately installed wheel passed packaged-asset, retained-media/version, reviewed Chromium fixture, and eight-tool MCP protocol checks. These checks do not establish automatic assistant interpretation or arbitrary replay.
+Historical October 18 checks for 0.4.0a2: 158 source tests passed, with one upstream Starlette/httpx deprecation warning. Browser acceptance covered the compact 390px recording/import flow, direct save to the task library without execution, reopening and updating tasks, Admin sample-check failures, escaped metadata, and cancelled capture. Repeated recordings with the same app/task name retain separate media and append task versions without orphaned recipes; tested source tasks cannot be merged into another task. Desktop and phone layouts were also inspected directly. The separately installed wheel passed packaged-asset, retained-media/version, reviewed Chromium fixture, and eight-tool MCP protocol checks. These checks do not establish automatic assistant interpretation or arbitrary replay.
 
 Historical receipts: October 16 acceptance covered the prior candidate and included source tests, an installed-wheel/browser/MCP smoke, native Hermes v0.22 issue-brief calls, and retained GitHub search reports. A later installed-wheel smoke from outside its checkout verified the packaged `training.js`, two independent tasks, edit/history with retained-media preservation, the reviewed Chromium fixture, and the MCP history handshake; its recorded source suite passed 107 tests. App/task browser checks covered separate tasks, import and review, approval without execution, read-only playback, edit/history restore, and preserved legacy practice and GitHub results. These receipts apply to those dated checkouts. They do not verify this staged Easy mode flow or its current hybrid runner changes.
 
@@ -46,3 +46,5 @@ Suggested audience: Hermes/MCP developers who want inspectable, human-approved b
 Draft promise: “A free, open-source experiment in browser procedures you can inspect: choose a public GitHub repository, approve a read-only search, and keep the result. Bring your own MCP agent.”
 
 After a separate founder publication decision, invite five willing developers; aim for three completed useful briefs, two return uses, and one concrete friction report per person. Measure completion time, assistance needed, failed outcomes and repeat use before stars or impressions. These are experiment targets; adoption and virality have not been measured. No outreach, posting, tracking installation or spending has been performed.
+
+0.4.0a4 navigation/handoff acceptance (October 18): 168 source tests passed with one upstream deprecation warning. Desktop/mobile Settings, explicit developer entry, task/session-specific clipboard requests, zero mutation during review checks, unsaved-edit guards and actual persisted proposal display passed. A fresh installed LikeThis wheel passed the packaged assets, retained media/settings/history/archive, reviewed Chromium fixture and eight-tool MCP smoke. These checks verify the interface and saved proposal path; they do not prove automatic assistant dispatch or general app replay.

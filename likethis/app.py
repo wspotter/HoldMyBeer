@@ -331,7 +331,9 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         from .training import training_task_metadata
         with app.state.store.connect() as db:
             sessions = []
-            for row in db.execute("SELECT id FROM sessions ORDER BY rowid DESC"):
+            # Drain this cursor before get_session opens another connection.
+            # A pending recorder commit must not wait on our live read cursor.
+            for row in db.execute("SELECT id FROM sessions ORDER BY rowid DESC").fetchall():
                 data = app.state.store.get_session(row[0])
                 data['training_task'] = training_task_metadata(db, row[0])
                 sessions.append(data)

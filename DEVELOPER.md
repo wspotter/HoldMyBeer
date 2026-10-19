@@ -96,3 +96,5 @@ The installed custom-model Hermes recording probe exposed a client capability ga
 ### LikeThis navigation and assistant handoff (2026-10-18)
 
 Primary navigation is Start, Saved tasks and Settings. Settings owns connection instructions and optional examples. The legacy recording/test workspace remains available only through Settings → Developer tools; its session APIs are unchanged. Saved task review requests identify the current recording session and version and can be copied for a connected assistant. Copying never dispatches work or proves connectivity. Unsaved edits must be saved before requesting review; historical/archived tasks stay read-only. The web app and MCP process must share their data directory. See docs/CLIENTS.md for setup and actual acceptance limits.
+
+Session listing drains its ID cursor before hydrating sessions through separate SQLite connections. This prevents a pending recording write from deadlocking against a retained listing read cursor; an interleaved independent-connection commit regression covers the boundary.

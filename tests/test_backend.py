@@ -524,3 +524,35 @@ def test_compact_first_use_requires_fresh_consent_and_retains_readable_result(se
             assert httpx.get(base + f"/api/sessions/{legacy['id']}").status_code == 200
         finally:
             browser.close()
+
+
+def test_session_list_releases_id_cursor_before_hydrating_sessions(tmp_path, monkeypatch):
+    """An interleaved recorder write must not wait on the session-list reader."""
+    import sqlite3
+    from fastapi.testclient import TestClient
+
+    app = create_app(tmp_path / "data")
+    client = TestClient(app)
+    client.post("/api/sessions", json={"title": "First recording"}).raise_for_status()
+    client.post("/api/sessions", json={"title": "Second recording"}).raise_for_status()
+    original = app.state.store.get_session
+    wrote = False
+
+    def hydrate_with_interleaved_write(ident):
+        nonlocal wrote
+        if not wrote:
+            # A separate recorder connection writes while the listing hydrates
+            # its first row. A live SELECT cursor would keep a shared read lock.
+            db = sqlite3.connect(app.state.store.db_path, timeout=.1)
+            try:
+                db.execute("UPDATE sessions SET data=data WHERE id=?", (ident,))
+                db.commit()
+                wrote = True
+            finally:
+                db.close()
+        return original(ident)
+
+    monkeypatch.setattr(app.state.store, "get_session", hydrate_with_interleaved_write)
+    result = client.get("/api/sessions")
+    assert result.status_code == 200
+    assert wrote and len(result.json()["sessions"]) == 2

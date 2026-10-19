@@ -1,5 +1,5 @@
 name: holdmybeer
 version: 0.3.0a1
-description: Read the local HoldMyBeer preview status.
+description: Read the local LikeThis preview status.
 provides_tools:
   - hmb_status

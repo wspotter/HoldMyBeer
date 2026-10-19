@@ -512,7 +512,7 @@ def test_cli_tui_interactive_flow(tmp_path, monkeypatch, capsys):
                 params={"pattern": r"^invoice_.*\.txt$", "prefix": "{prefix}"},
             )
         ],
-        trigger_phrases=["Hey Ollie, ping host in terminal"],
+        trigger_phrases=["Ping the example host in terminal"],
     )
     save_hybrid_recipe(store, recipe.task_id, recipe)
 

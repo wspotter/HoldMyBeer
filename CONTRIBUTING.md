@@ -1,16 +1,17 @@
 # Contributing
 
-Thanks for helping make workflow teaching clearer and safer. Small, focused contributions are easiest to review.
+Thanks for helping make LikeThis clearer and safer. Focused bug reports, documentation improvements, accessibility feedback, and small code changes are welcome. Use GitHub issues or pull requests in [wspotter/HoldMyBeer](https://github.com/wspotter/HoldMyBeer); include what you expected, what happened, and concise reproduction steps.
 
-## You do not need to code
+For local development, use Python 3.10 or newer:
 
-You can suggest a realistic task for the bundled fixture, improve a confusing instruction, report an accessibility issue, or review whether a procedure says what a person actually did. Use a GitHub issue when available, or send a proposed wording change as a pull request. Please say what you expected and what happened.
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e '.[test]'
+python -m playwright install chromium
+python -m pytest
+```
 
-## For code changes
+Tests that exercise the browser use the matching Playwright Chromium. Some media checks also require `ffmpeg` and `ffprobe`. See [DEVELOPER.md](DEVELOPER.md) for the project layout and [docs/VERIFICATION.md](docs/VERIFICATION.md) for reproducible capability checks.
 
-1. Open an issue or describe the problem in the pull request. Ready-to-adapt starter issue text is in [docs/LAUNCH.md](docs/LAUNCH.md).
-2. Keep changes narrow and preserve the local-only boundary.
-3. From a source checkout, install with `python3 -m pip install -e '.[test]'` and run `python3 -m pytest` plus `python3 -m compileall -q holdmybeer __init__.py` when relevant.
-4. Include the result and any steps a reviewer needs to reproduce it.
-
-Do not include recordings, screenshots containing private information, real account access, credentials, or customer data. Redact hostnames, email addresses, tokens, and private URLs from logs. Use the bundled fixture for examples.
+Use the bundled fixture and fictional names, captions, and repositories in examples. Do not submit recordings, screenshots with personal information, account access, credentials, cookies, customer data, or private URLs. Redact sensitive values from logs.

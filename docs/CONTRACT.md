@@ -1,69 +1,25 @@
-# Local teaching contract
+# Product and execution contract
 
-The FastAPI workspace binds to loopback. Runtime media, SQLite data, proposals and screenshots stay outside the source checkout under `HMB_DATA_DIR` (default `~/.local/share/holdmybeer`). The stdio MCP process uses that same directory; it does not start the workspace.
+LikeThis is a local workspace. The app and MCP server should use the same data directory. The `likethis` CLI uses `HMB_DATA_DIR` or the compatibility default `~/.local/share/holdmybeer`. A direct web-app launch checks `LIKETHIS_DATA_DIR`, then `HMB_DATA_DIR`, then an existing `~/.local/share/holdmybeer`, and otherwise uses `~/.local/share/likethis`. To guarantee a shared store, set `HMB_DATA_DIR` explicitly in both processes; for example launch with `HMB_DATA_DIR="$HOME/.local/share/likethis" likethis` and put the same path in the MCP client environment. The app binds to loopback by default.
 
-## Workspace API
+## Saved task lifecycle
 
-- `GET /api/status`: current capability labels.
-- `GET /api/training/apps`: active app/task hierarchy; `include_archived=true` also includes archived tasks.
-- `GET /api/training/tasks/{id}`: task, latest session and retained training versions.
-- `PUT /api/training/tasks/{id}/settings`: `base_version`, `name`, optional `description`, `done` and `notes`; atomically creates a new version for changes. A stale version, duplicate name or archived task returns 409; a no-op retains the current version.
-- `POST /api/training/tasks/{id}/archive` and `/unarchive`: reversible organization, preserving media/history. Archived tasks cannot be edited or accept new recordings until unarchived.
-- `POST /api/training/tasks/{id}/restore`: `base_version` and `source_version` copy a historical version into a new one; this is separate from unarchiving.
-- `GET/POST /api/sessions`: list/create workflows.
-- `GET/PUT /api/sessions/{id}`: retrieve or update title, notes, answers and procedure.
-- `GET /api/sessions/{id}/procedure-revisions`: latest 50 saved revisions, newest first; use `next_before_revision` as `before_revision` to page backwards.
-- `GET /api/sessions/{id}/procedure-revisions/{revision}`: exact retained procedure, save time and provenance.
-- `POST /api/sessions/{id}/media`: atomic bounded WebM/MP4 upload (100 MiB maximum).
-- `GET /api/sessions/{id}/media`: retained video.
-- `GET /api/sessions/{id}/proposal`: latest valid agent proposal, or `null`; never applies it.
-- `POST /api/sessions/{id}/run`: caption, plain filename, normal/changed fixture variant, legacy repair flag, and mode `practice` (legacy default) or `procedure`.
-- `GET /api/sessions/{id}/runs/{run_id}`: retained run and procedure snapshot.
-- `GET /api/artifacts/{run_id}.png`: retained screenshot.
-- `GET /fixture`: draft practice app; `?embedded=1` hides standalone navigation.
-- `GET/POST /api/fixture/drafts`: retained fixture drafts.
+The primary workspace organizes work as app → task → version. A version has its own recording session. Saving task changes creates a new version; viewing an earlier version is read-only. Restoring a version copies it into a new version and does not copy review or execution approval. Archiving removes a task from active choices while retaining its recordings and history; unarchiving restores it to active choices.
 
-Unknown fields, missing IDs and invalid targets are rejected. Origins must match the loopback request's scheme/host/port. Only one browser trial runs at a time.
+Review is a separate human-guided flow. An MCP client may read bounded session details and timestamped frames, then submit a separate proposal. LikeThis displays the proposal for manual review. Copying a review request does not send it to a client, and the app does not dispatch recordings automatically. Proposal metadata does not prove that the assistant inspected the images. Approving understanding is not permission to execute.
 
-## Procedure and execution
+## Supported execution
 
-A procedure has a positive integer `revision` and at most 20 steps. Every step has bounded text `goal` and `check`. Notes-only steps remain readable for older sessions. Executable fixture mode requires exactly these four steps:
+- **File recipes:** `file_rename_batch`, `file_organize_by_ext`, and `csv_summary_report` perform deterministic operations with sample checks and a before/after preview. Applying real file changes requires explicit approval.
+- **Bundled fixture:** a reviewed procedure has exactly four actions: `select_media` (legacy `upload` remains readable), `fill`, `click`, and `verify_draft`. It runs against LikeThis's local fixture only. It does not post to a real service or replay a personal recording. See [the example](FIXTURE_EXAMPLE.md).
+- **Public GitHub issue brief:** a fixed browser procedure reads a bounded number of public issue search results from one repository. A person must approve the exact plan before it runs. It does not sign in, write to GitHub, or provide an exhaustive audit. See [the guide](ISSUE-BRIEF.md).
 
-| action | target | input |
-| --- | --- | --- |
-| select_media (or legacy upload) | exact accessible input label | filename |
-| fill | exact accessible input label | caption |
-| click | exact accessible button name | absent |
-| verify_draft | absent | absent |
+Generic browser, GUI, and terminal actions do not produce successful execution receipts. Generic GUI and terminal work requires agent assistance. There is no general-purpose replay of recorded workflows or automatic assistant dispatch.
 
-Actions execute in saved order against the bundled fixture. No arbitrary URL, selector, JavaScript or shell command is accepted. Run inputs are substituted at execution time. `select_media` supports `media_mode: new` or `reuse`. Reuse requires an existing retained fixture draft ID and resolves its filename from storage. Legacy `upload` remains a fresh-file action. `check` documents expected evidence; it is not evaluated as executable text. Verification compares the returned draft ID and the expected filename and caption with retained API storage.
+## Persistence and API notes
 
-Missing targets stop with `needs_teaching`; no alternate locator is guessed. The repair flag is ignored in procedure mode. A run retains the exact procedure snapshot, mode, revision, steps, failure, draft ID and screenshot URL. Changing saved actions does not alter earlier evidence. Browser interactions have time limits; there is no mid-run cancellation interface yet.
+Task version changes use SQLite `BEGIN IMMEDIATE` transactions and compare the submitted `base_version` with the latest version. Stale bases, archived-task edits, and duplicate task names return HTTP 409. Session procedure saves are atomic: identical content may be retried at its current revision; changed content must advance by exactly one. Stale, skipped, or conflicting revisions return HTTP 409. Procedure history is append-only through the application, readable by exact revision or newest-first pages of up to 50. Older and working task versions reject ordinary session mutations. Each run stores a snapshot of its procedure and revision.
 
-The UI invalidates its review checkbox when actions change. Saving a changed procedure advances its revision. A user then explicitly authorizes a local trial. The API remains a local developer interface; callers can explicitly request a fixture run. The MCP bridge cannot execute a fixture procedure.
+Review proposals carry server-generated hashes of recording media and current task context. Editing either makes the proposal stale; approval is limited to the current proposal and records understanding only. Proposal creation and task activation serialize through SQLite write transactions.
 
-Procedure saves are atomic with session changes. The current revision may be resubmitted only with identical contents; changed contents must use exactly the next revision. An explicit new revision may also retain the same steps. Stale, reused-with-different-content and skipped revisions return HTTP 409 without saving accompanying notes or answers. Notes-only and media updates preserve the latest procedure. Saved history is append-only through the application. For upgraded stores, history begins with the known current revision, labelled `legacy_current` with its retention time; overwritten older revisions cannot be reconstructed. Previous run snapshots remain available separately.
-
-## Agent teaching bridge
-
-`hmb_list_sessions`, `hmb_get_session`, and `hmb_recording_frames` read bounded local evidence. Frame inspection accepts 1–6 finite timestamps and returns timestamp-labelled images scaled within 1280 × 720. Local ffprobe/ffmpeg use file/pipe protocols only and bounded subprocess work. A packet scan handles MediaRecorder WebM with missing duration metadata.
-
-`hmb_procedure_history` reads that same persisted history through MCP. Supply `revision` for an exact snapshot, or omit it for the newest 50; `before_revision` pages backwards. It cannot approve, replace or execute procedures.
-
-`hmb_propose_teaching` validates up to six timestamped observations, six questions and an executable procedure. It atomically writes a separate private proposal file. It cannot replace the reviewed session or execute anything. The workspace loads the latest proposal only when requested, displays observations/questions/actions, and waits for review.
-
-User answers remain bounded strings. Agent question/observation bundles may use up to 4000 characters; individual answers remain limited to 2000. Selected frames and session text returned through MCP enter the host agent's conversation and follow that host's data handling. HoldMyBeer runs no internal model and makes no independent remote inference requests.
-
-The native Hermes scaffold is separate and status-only. See [client configuration examples](CLIENTS.md) for the shared bridge. Client examples are not end-to-end installation receipts.
-
-## Named public issue brief
-
-The separate [GitHub issue brief](ISSUE-BRIEF.md) reads a public repository using a fixed, versioned browser procedure. It does not extend the recording-based action vocabulary above. `POST /api/issue-briefs` snapshots the exact repository, plain search words, limit and saved session revision. The UI approval exchange binds explicit consent to that immutable plan hash for ten minutes. `POST /api/issue-briefs/{id}/start` requires that approval and unchanged session revision; it returns the existing receipt when repeated. One shared browser lock covers both runner types.
-
-`GET /api/issue-briefs?session_id=...` lists retained jobs; `GET /api/issue-briefs/{id}` inspects one; `POST /api/issue-briefs/{id}/cancel` requests cooperative cancellation; `GET /api/issue-briefs/{id}/report` downloads a verified retained JSON report. Running jobs become `interrupted` on application restart and never replay automatically. The MCP adapter exposes proposal, approved execution and status tools for this named procedure, with no approval tool. Approval is a trusted-local-user boundary, not a sandbox against other local processes.
-
-## Media items
-
-The trial defaults to one media item. Optional `items` contains one to ten items, each with a caption, filename and media mode. Reuse items require `existing_draft_id`; new items supply a filename. Items execute sequentially and each completed attempt retains its own receipt. The batch stops at the first failed item. Remaining items are not executed.
-
-The fixture stores filenames and captions, not original file contents. Reuse reconstructs a harmless generated fixture file with the retained filename in the isolated browser. It does not inherit another browser tab's file selection or reuse real video bytes.
+Relevant registered routes include `GET /api/training/apps`, `POST /api/training/apps`, `POST /api/training/apps/{app_id}/tasks`, `GET /api/training/tasks/{task_id}`, task archive/unarchive/settings/restore routes, `GET/POST /api/sessions`, `GET/PUT /api/sessions/{session_id}`, session media and procedure-revision routes, and the issue brief list/detail/approve/start/cancel/report routes under `/api/issue-briefs`. The API is a local application interface, not a security boundary against other processes running as the same user. See [SECURITY.md](../SECURITY.md) for data handling guidance.

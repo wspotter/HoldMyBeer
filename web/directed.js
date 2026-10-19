@@ -971,10 +971,10 @@
           <div class="hmb-admin-section-title">🤖 Agent connection options</div>
           <div class="hmb-agent-row">
             <div><strong>Claude Code / Desktop</strong><br><small style="color:#666;">MCP dynamic tool</small></div>
-            <code>claude mcp add likethis uvx likethis mcp</code>
+            <code>/absolute/path/to/.venv/bin/likethis-mcp</code>
           </div>
           <div class="hmb-agent-row">
-            <div><strong>Hermes / Ollie</strong><br><small style="color:#666;">Autonomous worker tool</small></div>
+            <div><strong>Hermes</strong><br><small style="color:#666;">MCP tool name (connection required)</small></div>
             <code>${escapeText(res.tool_name || "Reconnect your client to discover tools")}</code>
           </div>
           <div class="hmb-agent-row">

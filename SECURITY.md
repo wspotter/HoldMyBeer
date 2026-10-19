@@ -1,11 +1,21 @@
-# Security
+# Security and local data
 
-HoldMyBeer is an experimental local preview. Its server is intended to bind to loopback only. It stores recordings and workflow notes on the local machine; treat that directory as private. The default is `~/.local/share/holdmybeer`, configurable with `HMB_DATA_DIR`.
+LikeThis is an experimental, single-user local application. Keep its server on loopback; it has no multi-user authentication or supported public-network deployment mode. Do not expose it to a LAN or the internet.
 
-The Hermes scaffold exposes only a read-only status lookup over HTTP to a loopback address. It does not execute shell commands, launch the preview, publish content, or transmit recordings. Do not expose the preview server to a network or use it with sensitive recordings.
+## Recordings and assistant access
 
-To report a security issue, use GitHub's private vulnerability reporting for this repository if available. Do not put exploit details, secrets, or personal recordings in a public issue. Include a concise impact description and a sanitized reproduction. If private reporting is unavailable, contact the repository maintainers privately before public disclosure.
+Recordings, notes, proposals and run artifacts are private workspace data. The web app uses `LIKETHIS_DATA_DIR`, then `HMB_DATA_DIR`, then an existing `~/.local/share/holdmybeer` folder, otherwise `~/.local/share/likethis`. The MCP bridge and compatibility CLI still use `HMB_DATA_DIR` and the legacy default. Configure the same explicit directory for both processes; see [client setup](docs/CLIENTS.md).
 
-The shared MCP bridge can read session text and selected recording images and write validated proposals to the private local data store. It has no execution tool. Returned images may be processed by your connected agent's model provider; do not confuse local decoding with entirely local inference. The native Hermes status scaffold remains separate.
+Recording and decoding happen locally. When an assistant requests session text or selected frames, those results enter its conversation and may be processed by its model provider. Local storage does not guarantee local inference. Avoid sensitive recordings, and review the assistant provider's data handling before sharing frames.
 
-Frame decoding accepts session IDs, not arbitrary paths or remote URLs. Decoder protocols are restricted to local file/pipe operations and subprocess timeouts. Proposals cannot alter a reviewed procedure. Local browser trials are confined to the bundled fixture and accept an action allowlist; free-text checks cannot run code. There is no multi-user authentication or network deployment mode.
+Never commit runtime databases, recordings, screenshots, exported skills containing private task details, credentials, cookies, or customer data. Review any evidence before attaching it to a public issue.
+
+## Execution boundaries
+
+Teaching proposals are review-only: they do not approve or execute a recording. The MCP bridge can execute the separate GitHub issue-brief workflow only after its exact plan has been approved in the local UI. Browser trials are limited to the bundled fixture's action allowlist. Deterministic file recipes have separate explicit approval controls; general browser, GUI and terminal replay is unavailable. See [the contract](docs/CONTRACT.md) for the supported operations.
+
+Frame decoding accepts stored session IDs rather than arbitrary paths or remote URLs, uses restricted decoder protocols, and has subprocess time limits. The native Hermes plugin is a separate status-only scaffold. None of these controls makes the server suitable for untrusted network access.
+
+## Report a vulnerability
+
+Use this repository's private vulnerability reporting if available. Otherwise contact a maintainer privately before disclosing an exploit. Include the impact, affected version and a sanitized reproduction; do not post secrets or personal recordings in a public issue.

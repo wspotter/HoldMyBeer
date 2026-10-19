@@ -156,7 +156,7 @@
         <form id="briefForm" class="task-surface">
           <h2>1. Choose what to look for</h2>
           <label for="briefRepository">GitHub project (owner/name)</label>
-          <input id="briefRepository" value="wspotter/HoldMyBeer" maxlength="140" required pattern="[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+" />
+          <input id="briefRepository" value="wspotter/LikeThis" maxlength="140" required pattern="[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+" />
           <small>Keep this example, or enter a public project you know.</small>
           <div class="compact-fields"><div><label for="briefKeyword">Words to look for (optional)</label><input id="briefKeyword" placeholder="For example: browser" maxlength="80" /></div><div><label for="briefLimit">How many results?</label><input id="briefLimit" type="number" min="1" max="10" value="5" required /></div></div>
           <button class="primary" id="briefPrepare" type="submit">Review the steps</button>
@@ -200,7 +200,7 @@
         <section class="task-surface" aria-labelledby="assistantSetupTitle">
           <h2 id="assistantSetupTitle">Connect your assistant</h2>
           <p>Use your own AI assistant to review recordings. Setup is required before it can access this workspace.</p>
-          <p><a href="https://github.com/wspotter/HoldMyBeer/blob/main/docs/CLIENTS.md" target="_blank" rel="noopener">Setup instructions for MCP clients</a></p>
+          <p><a href="https://github.com/wspotter/LikeThis/blob/main/docs/CLIENTS.md" target="_blank" rel="noopener">Setup instructions for MCP clients</a></p>
           <details class="technical-details"><summary>Setup details</summary><p>LikeThis does not connect an assistant automatically. Add the local command to an assistant that supports MCP, then ask it to review a saved recording.</p><pre class="command-snippet"><code>likethis-mcp</code></pre><p>The MCP process and LikeThis workspace need the same <code>HMB_DATA_DIR</code> when you have changed the default data folder.</p></details>
         </section>
         <section class="task-surface" aria-labelledby="practiceExamplesTitle">
@@ -268,7 +268,7 @@
           <details>
             <summary>Connect your agent</summary>
             <p>Start the local <code>likethis-mcp</code> server through your client's MCP settings. Your agent can then inspect this recording and submit a proposal. Recording alone does not start AI review.</p>
-            <a href="https://github.com/wspotter/HoldMyBeer/blob/main/docs/CLIENTS.md" target="_blank" rel="noopener">Client setup and verified limits ↗</a>
+            <a href="https://github.com/wspotter/LikeThis/blob/main/docs/CLIENTS.md" target="_blank" rel="noopener">Client setup and verified limits ↗</a>
           </details>
         </section>
         <section id="practice" class="practice-panel">

@@ -21,7 +21,7 @@ from .models import StrictModel
 
 class BriefRequest(StrictModel):
     session_id: uuid.UUID
-    repository: str = Field(default="wspotter/HoldMyBeer", min_length=3, max_length=140)
+    repository: str = Field(default="wspotter/LikeThis", min_length=3, max_length=140)
     keyword: str = Field(default="", max_length=80)
     limit: int = Field(default=10, ge=1, le=10, strict=True)
 

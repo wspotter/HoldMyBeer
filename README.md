@@ -4,7 +4,7 @@
 
 <p align="center"><img src="docs/hero-demo.svg" alt="LikeThis recording and review flow" width="880"></p>
 
-LikeThis is a local workspace for recording tasks, organizing them by app and task, and reviewing recordings with an assistant you connect. The source package is `likethis`; the public repository remains [wspotter/HoldMyBeer](https://github.com/wspotter/HoldMyBeer). Existing `holdmybeer` command and `mcp_servers.holdmybeer` client configuration names remain supported.
+LikeThis is a local workspace for recording tasks, organizing them by app and task, and reviewing recordings with an assistant you connect. The source package is `likethis`; the public repository is [wspotter/LikeThis](https://github.com/wspotter/LikeThis). Existing `holdmybeer` command and `mcp_servers.holdmybeer` client configuration names remain supported.
 
 ## The user flow
 
@@ -22,8 +22,8 @@ LikeThis does not automatically dispatch recordings to an assistant and does not
 Requires Python 3.10 or newer. Clone the public repository and install it in a virtual environment:
 
 ```sh
-git clone https://github.com/wspotter/HoldMyBeer.git
-cd HoldMyBeer
+git clone https://github.com/wspotter/LikeThis.git
+cd LikeThis
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -e .

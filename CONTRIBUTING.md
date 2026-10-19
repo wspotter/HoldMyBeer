@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping make LikeThis clearer and safer. Focused bug reports, documentation improvements, accessibility feedback, and small code changes are welcome. Use GitHub issues or pull requests in [wspotter/HoldMyBeer](https://github.com/wspotter/HoldMyBeer); include what you expected, what happened, and concise reproduction steps.
+Thanks for helping make LikeThis clearer and safer. Focused bug reports, documentation improvements, accessibility feedback, and small code changes are welcome. Use GitHub issues or pull requests in [wspotter/LikeThis](https://github.com/wspotter/LikeThis); include what you expected, what happened, and concise reproduction steps.
 
 For local development, use Python 3.10 or newer:
 

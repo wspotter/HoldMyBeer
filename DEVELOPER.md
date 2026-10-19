@@ -1,6 +1,6 @@
 # Developer guide
 
-LikeThis is a Python/FastAPI local application with a browser UI and an optional stdio MCP server. Python 3.10 or newer is required. The package is named `likethis`; the repository is `wspotter/HoldMyBeer` and compatible `holdmybeer` commands/configuration names are retained.
+LikeThis is a Python/FastAPI local application with a browser UI and an optional stdio MCP server. Python 3.10 or newer is required. The package is named `likethis`; the repository is `wspotter/LikeThis` and compatible `holdmybeer` commands/configuration names are retained.
 
 ## Development setup
 

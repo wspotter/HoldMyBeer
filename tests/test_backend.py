@@ -128,7 +128,9 @@ def test_browser_saves_changed_steps_as_new_revision_and_preserves_conflicting_e
         try:
             page = browser.new_page()
             page.goto(base)
-            page.get_by_role("button", name="Advanced", exact=True).click()
+            page.get_by_role("button", name="Settings", exact=True).click()
+            page.locator("#settingsDeveloperTools > summary").click()
+            page.locator("#openDeveloperTools").click()
             assert httpx.get(base + "/api/sessions").json()["sessions"] == []
             page.get_by_role("button", name="New workflow").click()
             expect(page.locator("#sessions button.selected")).to_be_visible()
@@ -175,7 +177,9 @@ def test_guided_demo_preserves_dirty_workflow_and_requires_explicit_review(serve
         try:
             page = browser.new_page()
             page.goto(base)
-            page.get_by_role("button", name="Advanced", exact=True).click()
+            page.get_by_role("button", name="Settings", exact=True).click()
+            page.locator("#settingsDeveloperTools > summary").click()
+            page.locator("#openDeveloperTools").click()
             expect(page.locator("#sessions button.selected")).to_be_visible()
             expect(page.locator("#notes")).to_have_value("Saved personal notes")
             page.locator("#notes").fill("Unsaved personal edit")
@@ -265,7 +269,9 @@ def test_guided_demo_retry_after_refresh_failure_restores_practice_procedure(ser
         try:
             page = browser.new_page()
             page.goto(base)
-            page.get_by_role("button", name="Advanced", exact=True).click()
+            page.get_by_role("button", name="Settings", exact=True).click()
+            page.locator("#settingsDeveloperTools > summary").click()
+            page.locator("#openDeveloperTools").click()
             expect(page.locator("#sessions button.selected")).to_be_visible()
             expect(page.locator("#title")).to_have_value("Existing workflow")
             failed = {"refresh": False}
@@ -465,7 +471,7 @@ def test_compact_first_use_requires_fresh_consent_and_retains_readable_result(se
             expect(page.locator("#demoBegin")).to_be_hidden()
             expect(page.locator("#advancedView")).to_be_hidden()
             assert httpx.get(base + "/api/sessions").json()["sessions"] == []
-            page.get_by_role("button", name="Advanced", exact=True).click()
+            page.get_by_role("button", name="Settings", exact=True).click()
             page.locator("#demoBegin").click()
             expect(page.locator("#demoRun")).to_be_disabled()
             page.locator("#demoConsent").check()

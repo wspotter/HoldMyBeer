@@ -13,7 +13,7 @@
       <nav class="app-nav" aria-label="Main navigation">
         <button type="button" data-view="home" aria-current="page">Start</button>
         <button type="button" data-view="saved">Saved tasks</button>
-        <button type="button" data-view="advanced">Advanced</button>
+        <button type="button" data-view="settings">Settings</button>
       </nav>
     </header>
     <main id="simpleApp" class="simple-app">
@@ -195,8 +195,27 @@
           <button id="savedKeepEditing" class="quiet" type="button">Keep editing</button>
         </div>
       </section>
+      <section id="settingsView" class="simple-view" aria-labelledby="settingsTitle" hidden>
+        <h1 id="settingsTitle" tabindex="-1">Settings</h1>
+        <section class="task-surface" aria-labelledby="assistantSetupTitle">
+          <h2 id="assistantSetupTitle">Connect your assistant</h2>
+          <p>Use your own AI assistant to review recordings. Setup is required before it can access this workspace.</p>
+          <p><a href="https://github.com/wspotter/HoldMyBeer/blob/main/docs/CLIENTS.md" target="_blank" rel="noopener">Setup instructions for MCP clients</a></p>
+          <details class="technical-details"><summary>Setup details</summary><p>LikeThis does not connect an assistant automatically. Add the local command to an assistant that supports MCP, then ask it to review a saved recording.</p><pre class="command-snippet"><code>likethis-mcp</code></pre><p>The MCP process and LikeThis workspace need the same <code>HMB_DATA_DIR</code> when you have changed the default data folder.</p></details>
+        </section>
+        <section class="task-surface" aria-labelledby="practiceExamplesTitle">
+          <h2 id="practiceExamplesTitle">Practice examples</h2>
+          <p class="compact-copy">Try either example to see how a reviewed task works.</p>
+          <div class="settings-actions"><button class="quiet" id="demoBegin" type="button">Practice draft example</button><button class="quiet" id="openBrief" type="button">GitHub issues example</button></div>
+        </section>
+        <details id="settingsDeveloperTools" class="task-surface settings-developer-tools">
+          <summary>Developer tools</summary>
+          <p>Open the existing recording and workflow workbench. These tools expose more detailed controls.</p>
+          <button id="openDeveloperTools" class="quiet" type="button">Open developer workbench</button>
+        </details>
+      </section>
     </main>
-    <section id="advancedView" hidden aria-label="Advanced recording workspace">
+    <section id="advancedView" hidden aria-label="Developer workbench">
     <div class="layout">
       <aside>
         <div class="aside-title">
@@ -214,7 +233,7 @@
         </div>
       </aside>
       <main>
-        <div class="advanced-intro"><p class="eyebrow">ADVANCED · EXPERIMENTAL</p><h2>Record and review a task</h2><p>Capture what you do and review it with a connected AI assistant. A recording does not turn into a runnable task automatically.</p><button class="quiet" id="guidedStart" type="button">Open the detailed practice walkthrough</button><div class="advanced-example-links"><button class="quiet" id="demoBegin" type="button">Practice draft example</button><button class="quiet" id="openBrief" type="button">GitHub issues example</button><button class="quiet" id="quickRecordBegin" type="button">👉 LikeThis (Instant Record)</button></div></div>
+        <div class="advanced-intro"><button class="back-link" id="workbenchBackSettings" type="button">← Settings</button><p class="eyebrow">DEVELOPER WORKBENCH</p><h2>Record and review a task</h2><p>Capture what you do and review it with an assistant you connected. A recording does not turn into a runnable task automatically.</p><button class="quiet" id="guidedStart" type="button">Open the detailed practice walkthrough</button><div class="advanced-example-links"><button class="quiet" id="quickRecordBegin" type="button">LikeThis (Instant Record)</button></div></div>
         <section id="guidedDemo" class="guided-demo" aria-labelledby="guidedTitle" hidden>
           <p class="eyebrow">FIXTURE-ONLY FIRST USE</p>
           <h2 id="guidedTitle">A new practice workflow, kept separate.</h2>

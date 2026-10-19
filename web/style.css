@@ -844,6 +844,10 @@ summary:focus-visible {
 .app-nav button:hover { background: #eaecf2; color: var(--ink); }
 .app-nav button[aria-current] { background: #eee8ff; color: #5429b7; font-weight: 650; }
 .simple-app { padding: 28px 24px 24px; max-width: 760px; margin: 0 auto; }
+.command-snippet { display: inline-block; margin: 0 0 8px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: #f5f4f8; }
+.settings-actions, .saved-review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.settings-developer-tools > summary { cursor: pointer; font-weight: 650; }
+.settings-developer-tools > p { color: var(--muted); font-size: 14px; }
 #homeView h1 { font-size: 28px; line-height: 1.15; margin: 4px 0 6px; }
 #homeView .welcome-copy { font-size: 14px; margin: 0 0 12px; }
 #homeView .eyebrow { margin: 0 0 4px; }
@@ -905,6 +909,16 @@ summary:focus-visible {
 .saved-editor-head { margin-bottom: 16px; }
 .saved-editor-head .eyebrow { margin: 0 0 6px; }
 .saved-editor-head h2 { margin: 0 0 6px; overflow-wrap: anywhere; }
+.saved-review-handoff { padding: 16px; }
+.saved-review-handoff h3 { margin: 0 0 8px; font-size: 16px; }
+.saved-review-handoff .compact-copy { margin-bottom: 12px; }
+#savedReviewRequest { display: block; width: 100%; min-height: 150px; margin: 10px 0 12px; font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; resize: vertical; }
+.saved-review-request { margin: 10px 0; color: var(--muted); font-size: 13px; }
+.saved-review-request summary { cursor: pointer; }
+.saved-review-result { font-size: 13px; line-height: 1.5; }
+.saved-review-result h4 { margin: 14px 0 4px; font-size: 13px; }
+.saved-review-result ul, .saved-review-result ol { margin: 4px 0 12px; padding-left: 22px; }
+.saved-review-handoff .task-status { margin-top: 10px; }
 #savedTaskVideo { display: block; width: 100%; max-height: 240px; aspect-ratio: 16 / 9; object-fit: contain; margin: 0 0 20px; background: #171923; border-radius: 8px; }
 .saved-task-form { display: grid; gap: 8px; }
 .saved-task-form label { margin-top: 8px; font-size: 13px; font-weight: 600; }
